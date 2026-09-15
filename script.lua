@@ -74,6 +74,10 @@ local State = {
     AutoPlaceEggs = false,
     InstantHatch = true,
     
+    AntiTrap = true,          -- Tự động né và vô hiệu hóa bẫy (gấu, gai, mìn)
+    AntiStun = true,          -- Chống bị kẹp bẫy, khựng nhân vật
+    FlyAboveGround = true,    -- Trộm trứng và di chuyển trên không tránh bẫy
+    
     AutoTrain = false,
     AutoClickTrain = false,
     
@@ -83,10 +87,10 @@ local State = {
     
     EggESP = false,
     
-    WalkSpeed = 16,
+    WalkSpeed = 150,
     EnableWalkSpeed = false,
-    CFrameBoost = false,
-    CFrameSpeed = 2,
+    CFrameBoost = true,
+    CFrameSpeed = 6,          -- Siêu tốc lướt CFrame
     InfiniteJump = false,
     Noclip = false,
     
@@ -157,7 +161,7 @@ task.spawn(function()
     end)
 end)
 
--- 2. Fast CFrame Movement
+-- 2. Fast CFrame Movement & Speed Boost
 RunService.Stepped:Connect(function()
     pcall(function()
         local char = getCharacter()
@@ -170,6 +174,18 @@ RunService.Stepped:Connect(function()
 
         if hrp and hum and State.CFrameBoost and hum.MoveDirection.Magnitude > 0 then
             hrp.CFrame = hrp.CFrame + (hum.MoveDirection * State.CFrameSpeed)
+        end
+
+        -- Bay lơ lửng trên không khi di chuyển tránh bẫy dưới sàn
+        if State.FlyAboveGround and hrp and hum and hum.MoveDirection.Magnitude > 0 then
+            local ray = Ray.new(hrp.Position, Vector3.new(0, -10, 0))
+            local hit, pos = Workspace:FindPartOnRayWithIgnoreList(ray, {char})
+            if hit then
+                local targetY = pos.Y + 5
+                if hrp.Position.Y < targetY then
+                    hrp.CFrame = CFrame.new(hrp.Position.X, targetY, hrp.Position.Z) * hrp.CFrame.Rotation
+                end
+            end
         end
 
         if State.Noclip and char then
@@ -192,15 +208,17 @@ UserInputService.JumpRequest:Connect(function()
     end
 end)
 
--- 4. Auto Steal Eggs Loop
+-- 4. Auto Steal Eggs Loop (Với Tọa Độ Trên Không Tránh Trap Dưới Đất)
 task.spawn(function()
-    while task.wait(0.3) do
+    while task.wait(0.25) do
         if State.AutoSteal then
             pcall(function()
                 local hrp = getRootPart()
                 if not hrp then return end
 
                 applyInstantPrompts()
+
+                local hoverHeight = (State.FlyAboveGround or State.AntiTrap) and 4.5 or 3
 
                 local eggSpawns = Workspace:FindFirstChild("Eggs") or Workspace:FindFirstChild("EggSpawns") or Workspace:FindFirstChild("Spawns")
                 if not eggSpawns then
@@ -211,10 +229,10 @@ task.spawn(function()
                             if prompt and prompt.Enabled then
                                 local targetPart = obj:IsA("BasePart") and obj or (obj.Parent:IsA("BasePart") and obj.Parent or nil)
                                 if targetPart then
-                                    hrp.CFrame = targetPart.CFrame * CFrame.new(0, 3, 0)
+                                    hrp.CFrame = targetPart.CFrame * CFrame.new(0, hoverHeight, 0)
                                     task.wait(0.1)
                                     fireproximityprompt(prompt)
-                                    task.wait(0.2)
+                                    task.wait(0.15)
                                 end
                             end
                         end
@@ -226,10 +244,10 @@ task.spawn(function()
                         if prompt and prompt.Enabled then
                             local part = egg:IsA("BasePart") and egg or egg:FindFirstChildWhichIsA("BasePart")
                             if part then
-                                hrp.CFrame = part.CFrame * CFrame.new(0, 3, 0)
+                                hrp.CFrame = part.CFrame * CFrame.new(0, hoverHeight, 0)
                                 task.wait(0.1)
                                 fireproximityprompt(prompt)
-                                task.wait(0.2)
+                                task.wait(0.15)
                             end
                         end
                     end
@@ -355,6 +373,56 @@ task.spawn(function()
                         remote:FireServer("Speed")
                         remote:FireServer("Storage")
                         remote:FireServer("Multiplier")
+                    end
+                end
+            end)
+        end
+    end
+-- 10. Trap Avoidance & Anti-Trap Loop (Vô hiệu hóa bẫy gấu, gai, mìn)
+task.spawn(function()
+    while task.wait(0.4) do
+        if State.AntiTrap then
+            pcall(function()
+                for _, obj in pairs(Workspace:GetDescendants()) do
+                    local name = obj.Name:lower()
+                    if name:find("trap") or name:find("spike") or name:find("mine") or name:find("laser") or name:find("hazard") or name:find("bear") then
+                        if obj:IsA("BasePart") then
+                            obj.CanTouch = false
+                            obj.CanCollide = false
+                            local touch = obj:FindFirstChildOfClass("TouchTransmitter")
+                            if touch then
+                                touch:Destroy()
+                            end
+                        elseif obj:IsA("Model") then
+                            for _, part in pairs(obj:GetDescendants()) do
+                                if part:IsA("BasePart") then
+                                    part.CanTouch = false
+                                    part.CanCollide = false
+                                    local touch = part:FindFirstChildOfClass("TouchTransmitter")
+                                    if touch then
+                                        touch:Destroy()
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+-- 11. Anti-Stun & Anti-Ragdoll (Chống bị kẹp bẫy / Không khựng di chuyển)
+task.spawn(function()
+    while task.wait(0.15) do
+        if State.AntiStun then
+            pcall(function()
+                local hum = getHumanoid()
+                if hum then
+                    hum.PlatformStand = false
+                    local s = hum:GetState()
+                    if s == Enum.HumanoidStateType.Ragdoll or s == Enum.HumanoidStateType.FallingDown or s == Enum.HumanoidStateType.PlatformStanding then
+                        hum:ChangeState(Enum.HumanoidStateType.Running)
                     end
                 end
             end)
@@ -718,6 +786,9 @@ addToggle(StealPage, "Mở Trứng Tức Thì (0 Giây Hold Prompt)", State.Inst
     State.InstantHatch = v
     applyInstantPrompts()
 end)
+addToggle(StealPage, "🛡️ Né & Vô Hiệu Hóa Trap (Bẫy Gấu, Gai, Mìn)", State.AntiTrap, function(v) State.AntiTrap = v end)
+addToggle(StealPage, "⚡ Chống Kẹp Bẫy / Khựng Tốc Độ (Anti-Stun)", State.AntiStun, function(v) State.AntiStun = v end)
+addToggle(StealPage, "🦅 Bay Lơ Lửng Trên Không (Tránh Bẫy Dưới Đất)", State.FlyAboveGround, function(v) State.FlyAboveGround = v end)
 
 -- ── TAB 2: CÀY & TẬP ──
 addToggle(FarmPage, "Tự Động Luyện Tập (Máy Tập/Treadmill)", State.AutoTrain, function(v) State.AutoTrain = v end)
@@ -763,17 +834,38 @@ addToggle(PlayerPage, "Bật Tốc Độ Chạy Tùy Chỉnh", State.EnableWalkS
     end
 end)
 
-addButton(PlayerPage, "🚀 Nâng Tốc Độ: 50 Speed", function()
-    State.WalkSpeed = 50
+addButton(PlayerPage, "⚡ Tốc Độ Nhanh: 150 Speed", function()
+    State.WalkSpeed = 150
     State.EnableWalkSpeed = true
 end)
 
-addButton(PlayerPage, "⚡ Siêu Tốc Độ: 120 Speed", function()
-    State.WalkSpeed = 120
+addButton(PlayerPage, "🚀 Siêu Tốc Độ: 300 Speed", function()
+    State.WalkSpeed = 300
     State.EnableWalkSpeed = true
 end)
 
-addToggle(PlayerPage, "Lướt CFrame Siêu Mượt (CFrame Step)", State.CFrameBoost, function(v) State.CFrameBoost = v end)
+addButton(PlayerPage, "🌪️ Thần Tốc: 500 Speed", function()
+    State.WalkSpeed = 500
+    State.EnableWalkSpeed = true
+end)
+
+addToggle(PlayerPage, "Lướt CFrame Siêu Tốc (Không Giật Lag)", State.CFrameBoost, function(v) State.CFrameBoost = v end)
+
+addButton(PlayerPage, "🔹 CFrame Tốc Độ: x4 (Mượt Mà)", function()
+    State.CFrameSpeed = 4
+    State.CFrameBoost = true
+end)
+
+addButton(PlayerPage, "⚡ CFrame Siêu Tốc: x8 (Cực Nhanh)", function()
+    State.CFrameSpeed = 8
+    State.CFrameBoost = true
+end)
+
+addButton(PlayerPage, "🌪️ CFrame Thần Tốc: x15 (Tức Thời)", function()
+    State.CFrameSpeed = 15
+    State.CFrameBoost = true
+end)
+
 addToggle(PlayerPage, "Nhảy Vô Hạn (Infinite Jump)", State.InfiniteJump, function(v) State.InfiniteJump = v end)
 addToggle(PlayerPage, "Đi Xuyên Tường (Noclip)", State.Noclip, function(v) State.Noclip = v end)
 
@@ -805,9 +897,9 @@ end)
 pcall(function()
     game:GetService("StarterGui"):SetCore("SendNotification", {
         Title = "Trộm & Ấp Trứng Anime",
-        Text = "Phiên bản Tiếng Việt V1.1 đã sẵn sàng!",
+        Text = "Phiên bản V1.2: Đã thêm Né Trap & Siêu Tốc Độ!",
         Duration = 4
     })
 end)
 
-print("🥚 [STEAL & HATCH ANIME EGGS] Ultimate Auto Hub V1.1 Tiếng Việt Đã Sẵn Sàng!")
+print("🥚 [STEAL & HATCH ANIME EGGS] Ultimate Auto Hub V1.2 (Né Trap & Siêu Tốc Độ) Đã Sẵn Sàng!")
