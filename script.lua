@@ -1,7 +1,7 @@
 --[[
     ===================================================================
-    🥚 STEAL & HATCH ANIME EGGS! - ULTIMATE AUTO HUB V2.0 (STABLE)
-    Tự động chơi toàn diện tiếng Việt cho tựa game Steal and Hatch Anime Eggs trên Roblox!
+    🥚 STEAL & HATCH ANIME EGGS! - ULTIMATE AUTO HUB V2.1 (ULTRA SMOOTH)
+    Tối ưu hóa hiệu năng 60 FPS: Loại bỏ hoàn toàn giật lag, di chuyển mượt mà!
     Tương thích 100% Delta Executor (Android & PC), Wave, Codex, Fluxus.
     ===================================================================
 --]]
@@ -14,6 +14,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
+local Lighting = game:GetService("Lighting")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -73,6 +74,7 @@ local State = {
     AutoUpgradeStats = false,
     
     EggESP = false,
+    FPSBoost = false,
     
     SpeedEnabled = false,
     WalkSpeed = 150,
@@ -86,25 +88,83 @@ local State = {
 
 local ESPHighlights = {}
 
--- ── Instant ProximityPrompt Hook ──
-local function applyInstantPrompts()
+-- ── High-Performance Event-Driven Cache (Zero Lag, 60 FPS) ──
+local Cache = {
+    Traps = {},
+    Eggs = {},
+    Drops = {},
+    Prompts = {}
+}
+
+local function classifyInstance(obj)
+    if not obj or not obj.Parent then return end
     pcall(function()
-        for _, prompt in pairs(Workspace:GetDescendants()) do
-            if prompt:IsA("ProximityPrompt") and State.InstantHatch then
-                prompt.RequiresLineOfSight = false
-                prompt.HoldDuration = 0
+        local name = obj.Name:lower()
+        if obj:IsA("ProximityPrompt") then
+            table.insert(Cache.Prompts, obj)
+            if State.InstantHatch then
+                obj.RequiresLineOfSight = false
+                obj.HoldDuration = 0
             end
+        end
+        if name:find("trap") or name:find("spike") or name:find("mine") or name:find("laser") or name:find("hazard") or name:find("bear") then
+            table.insert(Cache.Traps, obj)
+            if State.AntiTrap then
+                if obj:IsA("BasePart") then
+                    obj.CanTouch = false
+                    obj.CanCollide = false
+                    local t = obj:FindFirstChildOfClass("TouchTransmitter")
+                    if t then t:Destroy() end
+                elseif obj:IsA("Model") then
+                    for _, p in ipairs(obj:GetDescendants()) do
+                        if p:IsA("BasePart") then
+                            p.CanTouch = false
+                            p.CanCollide = false
+                            local t = p:FindFirstChildOfClass("TouchTransmitter")
+                            if t then t:Destroy() end
+                        end
+                    end
+                end
+            end
+        elseif name:find("egg") or obj:FindFirstChildOfClass("ProximityPrompt") then
+            table.insert(Cache.Eggs, obj)
+        elseif obj:IsA("BasePart") and (name:find("coin") or name:find("gem") or name:find("orb") or name:find("drop")) then
+            table.insert(Cache.Drops, obj)
         end
     end)
 end
 
-pcall(function()
-    Workspace.DescendantAdded:Connect(function(descendant)
-        if descendant:IsA("ProximityPrompt") and State.InstantHatch then
-            descendant.RequiresLineOfSight = false
-            descendant.HoldDuration = 0
+local function cleanCacheTable(t)
+    local i = 1
+    while i <= #t do
+        if not t[i] or not t[i].Parent then
+            table.remove(t, i)
+        else
+            i = i + 1
         end
-    end)
+    end
+end
+
+-- Initialize Cache asynchronously without causing lag spike
+task.defer(function()
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        classifyInstance(obj)
+    end
+end)
+
+Workspace.DescendantAdded:Connect(function(descendant)
+    classifyInstance(descendant)
+end)
+
+-- Periodic light cleanup every 5s
+task.spawn(function()
+    while true do
+        task.wait(5)
+        cleanCacheTable(Cache.Traps)
+        cleanCacheTable(Cache.Eggs)
+        cleanCacheTable(Cache.Drops)
+        cleanCacheTable(Cache.Prompts)
+    end
 end)
 
 -- ── Helper Functions (Safe & Non-Yielding) ──
@@ -125,7 +185,7 @@ end
 local function getPlayerPlot()
     local plots = Workspace:FindFirstChild("Plots") or Workspace:FindFirstChild("Bases") or Workspace:FindFirstChild("Tycoons")
     if plots then
-        for _, plot in pairs(plots:GetChildren()) do
+        for _, plot in ipairs(plots:GetChildren()) do
             local owner = plot:FindFirstChild("Owner") or plot:FindFirstChild("Player")
             if owner and (owner.Value == LocalPlayer or owner.Value == LocalPlayer.Name) then
                 return plot
@@ -158,37 +218,44 @@ pcall(function()
     end)
 end)
 
--- ── Stepped Loop: Speed, CFrame Dash, Air Hover, Noclip ──
-RunService.Stepped:Connect(function()
+-- ── Silky-Smooth Movement & CFrame Engine (Delta-Time Normalized) ──
+local lastTick = tick()
+RunService.RenderStepped:Connect(function()
+    local currentTick = tick()
+    local dt = currentTick - lastTick
+    lastTick = currentTick
+    if dt > 0.1 then dt = 0.016 end -- clamp any lag spike
+
     local char = LocalPlayer.Character
     if not char then return end
 
     local hum = char:FindFirstChildOfClass("Humanoid")
     local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not hrp then return end
 
-    if hum and State.SpeedEnabled then
+    -- Smooth WalkSpeed enforcement
+    if State.SpeedEnabled then
         if hum.WalkSpeed ~= State.WalkSpeed then
             hum.WalkSpeed = State.WalkSpeed
         end
     end
 
-    if hrp and hum and State.CFrameBoost and hum.MoveDirection.Magnitude > 0 then
-        hrp.CFrame = hrp.CFrame + (hum.MoveDirection * (State.CFrameSpeed * 0.35))
+    -- Delta-time normalized smooth CFrame boost (siêu mượt không khựng)
+    if State.CFrameBoost and hum.MoveDirection.Magnitude > 0 then
+        local boostFactor = State.CFrameSpeed * 18 * dt
+        hrp.CFrame = hrp.CFrame + (hum.MoveDirection * boostFactor)
     end
 
-    if State.FlyAboveGround and hrp and hum and hum.MoveDirection.Magnitude > 0 then
-        local ray = Ray.new(hrp.Position, Vector3.new(0, -12, 0))
-        local hit, pos = Workspace:FindPartOnRayWithIgnoreList(ray, {char})
-        if hit then
-            local targetY = pos.Y + 5.5
-            if hrp.Position.Y < targetY then
-                hrp.CFrame = CFrame.new(hrp.Position.X, targetY, hrp.Position.Z) * hrp.CFrame.Rotation
-            end
+    -- Hover trên không né trap dưới đất
+    if State.FlyAboveGround and hum.MoveDirection.Magnitude > 0 then
+        if hrp.Velocity.Y < 0 then
+            hrp.Velocity = Vector3.new(hrp.Velocity.X, 0, hrp.Velocity.Z)
         end
     end
 
-    if State.Noclip then
-        for _, part in pairs(char:GetDescendants()) do
+    -- Noclip nhẹ nhàng
+    if State.Noclip and hum.MoveDirection.Magnitude > 0 then
+        for _, part in ipairs(char:GetChildren()) do
             if part:IsA("BasePart") and part.CanCollide then
                 part.CanCollide = false
             end
@@ -358,7 +425,7 @@ local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, -12, 1, 0)
 StatusLabel.Position = UDim2.new(0, 6, 0, 0)
 StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "🟢 Trạng thái: Sẵn sàng hoạt động"
+StatusLabel.Text = "🟢 Trạng thái: Siêu Mượt 60 FPS"
 StatusLabel.TextColor3 = Color3.fromRGB(0, 230, 180)
 StatusLabel.Font = Enum.Font.SourceSansBold
 StatusLabel.TextSize = 11
@@ -467,12 +534,17 @@ end
 createSectionHeader("🥚 Trộm & Ấp Trứng")
 createToggle("Tự Động Trộm Trứng (Auto Steal)", State.AutoSteal, function(v)
     State.AutoSteal = v
-    setStatus(v and "Đang tự động trộm trứng..." or "Đã dừng trộm trứng.")
+    setStatus(v and "Đang trộm trứng mượt mà..." or "Đã dừng trộm trứng.")
 end)
 createToggle("Tự Đem Trứng Về Base & Xếp Máy", State.AutoPlaceEggs, function(v) State.AutoPlaceEggs = v end)
 createToggle("Mở Trứng Tức Thì (0s Hold Prompt)", State.InstantHatch, function(v)
     State.InstantHatch = v
-    applyInstantPrompts()
+    for _, prompt in ipairs(Cache.Prompts) do
+        if prompt and prompt.Parent then
+            prompt.RequiresLineOfSight = false
+            prompt.HoldDuration = 0
+        end
+    end
 end)
 
 -- SECTION 2: NÉ TRAP & BẢO VỆ
@@ -517,7 +589,7 @@ createButton("🌪️ Chọn Tốc Độ: 500 Speed", function()
     setStatus("Đã đặt tốc độ: 500 Speed")
 end)
 
-createToggle("Lướt CFrame Siêu Tốc (Không Giật)", State.CFrameBoost, function(v) State.CFrameBoost = v end)
+createToggle("Lướt CFrame Siêu Mượt (Không Giật)", State.CFrameBoost, function(v) State.CFrameBoost = v end)
 createButton("🔹 Lướt CFrame: x4 (Mượt Mà)", function()
     State.CFrameSpeed = 4
     State.CFrameBoost = true
@@ -563,8 +635,22 @@ createButton("⚡ Dịch Chuyển Đến Khu Tập Luyện", function()
     end
 end)
 
--- SECTION 6: CÀI ĐẶT & HỆ THỐNG
-createSectionHeader("⚙️ Cài Đặt & Chống AFK")
+-- SECTION 6: CÀI ĐẶT & TỐI ƯU FPS
+createSectionHeader("⚙️ Cài Đặt & Chống Lag")
+createToggle("⚡ Chế Độ Siêu Mượt 60 FPS (Giảm Lag)", State.FPSBoost, function(v)
+    State.FPSBoost = v
+    if v then
+        pcall(function()
+            Lighting.GlobalShadows = false
+            Lighting.FogEnd = 9e9
+            for _, fx in ipairs(Lighting:GetChildren()) do
+                if fx:IsA("PostEffect") then fx.Enabled = false end
+            end
+            settings().Rendering.QualityLevel = 1
+        end)
+        setStatus("Đã bật chế độ Siêu Mượt 60 FPS!")
+    end
+end)
 createToggle("Chống Văng Game Anti-AFK 24/7", State.AntiAFK, function(v) State.AntiAFK = v end)
 createButton("🔄 Vào Lại Server Hiện Tại", function()
     TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
@@ -588,49 +674,31 @@ createButton("🌐 Đổi Server Mới (Server Hop)", function()
 end)
 
 -- ═══════════════════════════════════════════════════════════
--- 🔄 BACKGROUND AUTO WORKERS
+-- 🔄 BACKGROUND AUTO WORKERS (SỬ DỤNG CACHE - ZERO LAG)
 -- ═══════════════════════════════════════════════════════════
 
--- 1. Auto Steal Eggs Worker
+-- 1. Auto Steal Eggs Worker (Sử dụng Cache, không quét toàn bộ map)
 task.spawn(function()
     while true do
-        task.wait(0.25)
+        task.wait(0.3)
         if State.AutoSteal then
             pcall(function()
                 local hrp = getRootPart()
                 if not hrp then return end
 
-                applyInstantPrompts()
-                local hoverOffset = (State.FlyAboveGround or State.AntiTrap) and 5 or 3
+                local hoverOffset = (State.FlyAboveGround or State.AntiTrap) and 4.5 or 3
 
-                local eggSpawns = Workspace:FindFirstChild("Eggs") or Workspace:FindFirstChild("EggSpawns") or Workspace:FindFirstChild("Spawns")
-                if not eggSpawns then
-                    for _, obj in pairs(Workspace:GetDescendants()) do
-                        if not State.AutoSteal then break end
-                        if obj.Name:lower():find("egg") or obj:FindFirstChildOfClass("ProximityPrompt") then
-                            local prompt = obj:FindFirstChildOfClass("ProximityPrompt") or obj.Parent:FindFirstChildOfClass("ProximityPrompt")
-                            if prompt and prompt.Enabled then
-                                local targetPart = obj:IsA("BasePart") and obj or (obj.Parent:IsA("BasePart") and obj.Parent or nil)
-                                if targetPart then
-                                    hrp.CFrame = targetPart.CFrame * CFrame.new(0, hoverOffset, 0)
-                                    task.wait(0.1)
-                                    triggerPrompt(prompt)
-                                    task.wait(0.15)
-                                end
-                            end
-                        end
-                    end
-                else
-                    for _, egg in pairs(eggSpawns:GetChildren()) do
-                        if not State.AutoSteal then break end
-                        local prompt = egg:FindFirstChildOfClass("ProximityPrompt") or egg:FindFirstChild("Prompt", true)
+                for _, egg in ipairs(Cache.Eggs) do
+                    if not State.AutoSteal then break end
+                    if egg and egg.Parent then
+                        local prompt = egg:IsA("ProximityPrompt") and egg or egg:FindFirstChildOfClass("ProximityPrompt") or egg:FindFirstChild("Prompt", true)
                         if prompt and prompt.Enabled then
                             local part = egg:IsA("BasePart") and egg or egg:FindFirstChildWhichIsA("BasePart")
                             if part then
                                 hrp.CFrame = part.CFrame * CFrame.new(0, hoverOffset, 0)
-                                task.wait(0.1)
+                                task.wait(0.08)
                                 triggerPrompt(prompt)
-                                task.wait(0.15)
+                                task.wait(0.12)
                             end
                         end
                     end
@@ -651,13 +719,13 @@ task.spawn(function()
                 if plot and hrp then
                     local hatchers = plot:FindFirstChild("Hatchers") or plot:FindFirstChild("Incubators") or plot:FindFirstChild("EggPads")
                     if hatchers then
-                        for _, pad in pairs(hatchers:GetChildren()) do
+                        for _, pad in ipairs(hatchers:GetChildren()) do
                             local prompt = pad:FindFirstChildOfClass("ProximityPrompt", true)
                             if prompt and prompt.Enabled then
                                 local part = pad:IsA("BasePart") and pad or pad:FindFirstChildWhichIsA("BasePart")
                                 if part then
                                     hrp.CFrame = part.CFrame * CFrame.new(0, 3, 0)
-                                    task.wait(0.1)
+                                    task.wait(0.08)
                                     triggerPrompt(prompt)
                                 end
                             end
@@ -674,31 +742,22 @@ task.spawn(function()
     end
 end)
 
--- 3. Anti-Trap / Trap Dodger Worker
+-- 3. Anti-Trap Worker (Tắt bẫy ngay lập tức từ Cache)
 task.spawn(function()
     while true do
-        task.wait(0.4)
+        task.wait(1.0)
         if State.AntiTrap then
             pcall(function()
-                for _, obj in pairs(Workspace:GetDescendants()) do
-                    local name = obj.Name:lower()
-                    if name:find("trap") or name:find("spike") or name:find("mine") or name:find("laser") or name:find("hazard") or name:find("bear") then
+                for _, obj in ipairs(Cache.Traps) do
+                    if obj and obj.Parent then
                         if obj:IsA("BasePart") then
                             obj.CanTouch = false
                             obj.CanCollide = false
-                            local touch = obj:FindFirstChildOfClass("TouchTransmitter")
-                            if touch then
-                                touch:Destroy()
-                            end
                         elseif obj:IsA("Model") then
-                            for _, part in pairs(obj:GetDescendants()) do
+                            for _, part in ipairs(obj:GetChildren()) do
                                 if part:IsA("BasePart") then
                                     part.CanTouch = false
                                     part.CanCollide = false
-                                    local touch = part:FindFirstChildOfClass("TouchTransmitter")
-                                    if touch then
-                                        touch:Destroy()
-                                    end
                                 end
                             end
                         end
@@ -709,10 +768,10 @@ task.spawn(function()
     end
 end)
 
--- 4. Anti-Stun / Anti-Ragdoll Worker
+-- 4. Anti-Stun Worker (Nhẹ nhàng & không khựng)
 task.spawn(function()
     while true do
-        task.wait(0.15)
+        task.wait(0.2)
         if State.AntiStun then
             pcall(function()
                 local hum = getHumanoid()
@@ -739,13 +798,13 @@ task.spawn(function()
 
                 local trainArea = Workspace:FindFirstChild("Treadmills") or Workspace:FindFirstChild("Training") or Workspace:FindFirstChild("Machines")
                 if trainArea then
-                    for _, machine in pairs(trainArea:GetChildren()) do
+                    for _, machine in ipairs(trainArea:GetChildren()) do
                         local prompt = machine:FindFirstChildOfClass("ProximityPrompt", true)
                         if prompt and prompt.Enabled then
                             local part = machine:IsA("BasePart") and machine or machine:FindFirstChildWhichIsA("BasePart")
                             if part then
                                 hrp.CFrame = part.CFrame * CFrame.new(0, 3, 0)
-                                task.wait(0.1)
+                                task.wait(0.08)
                                 triggerPrompt(prompt)
                                 break
                             end
@@ -754,7 +813,7 @@ task.spawn(function()
                 end
 
                 if State.AutoClickTrain then
-                    for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
+                    for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
                         if remote:IsA("RemoteEvent") and (remote.Name:lower():find("train") or remote.Name:lower():find("click")) then
                             remote:FireServer()
                         end
@@ -765,17 +824,17 @@ task.spawn(function()
     end
 end)
 
--- 6. Auto Collect Coins & Gems Worker
+-- 6. Auto Collect Coins & Drops Worker (Từ Cache Drops)
 task.spawn(function()
     while true do
-        task.wait(0.3)
+        task.wait(0.4)
         if State.AutoCollectCoins then
             pcall(function()
                 local hrp = getRootPart()
                 if not hrp then return end
 
-                for _, obj in pairs(Workspace:GetDescendants()) do
-                    if obj:IsA("BasePart") and (obj.Name:lower():find("coin") or obj.Name:lower():find("gem") or obj.Name:lower():find("orb") or obj.Name:lower():find("drop")) then
+                for _, obj in ipairs(Cache.Drops) do
+                    if obj and obj.Parent and obj:IsA("BasePart") then
                         obj.CFrame = hrp.CFrame
                     end
                 end
@@ -787,10 +846,10 @@ end)
 -- 7. Auto Rebirth & Upgrade Worker
 task.spawn(function()
     while true do
-        task.wait(1.0)
+        task.wait(1.5)
         if State.AutoRebirth then
             pcall(function()
-                for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
+                for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
                     if remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") then
                         if remote.Name:lower():find("rebirth") then
                             if remote:IsA("RemoteEvent") then
@@ -805,7 +864,7 @@ task.spawn(function()
         end
         if State.AutoUpgradeStats then
             pcall(function()
-                for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
+                for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
                     if remote:IsA("RemoteEvent") and (remote.Name:lower():find("upgrade") or remote.Name:lower():find("buy")) then
                         remote:FireServer("Speed")
                         remote:FireServer("Storage")
@@ -820,7 +879,7 @@ end)
 -- 8. Egg ESP Worker
 task.spawn(function()
     while true do
-        task.wait(2.0)
+        task.wait(2.5)
         for obj, hl in pairs(ESPHighlights) do
             if not obj or not obj.Parent or not State.EggESP then
                 pcall(function() hl:Destroy() end)
@@ -829,8 +888,8 @@ task.spawn(function()
         end
         if State.EggESP then
             pcall(function()
-                for _, obj in pairs(Workspace:GetDescendants()) do
-                    if (obj.Name:lower():find("egg") or obj:FindFirstChildOfClass("ProximityPrompt")) and not ESPHighlights[obj] then
+                for _, obj in ipairs(Cache.Eggs) do
+                    if obj and obj.Parent and not ESPHighlights[obj] then
                         if obj:IsA("Model") or obj:IsA("BasePart") then
                             local hl = Instance.new("Highlight")
                             hl.Adornee = obj
@@ -851,9 +910,9 @@ end)
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "Trộm & Ấp Trứng Anime",
-        Text = "Bản V2.0 Tiếng Việt Đã Sẵn Sàng!",
+        Text = "Bản V2.1 Siêu Mượt 60 FPS Đã Sẵn Sàng!",
         Duration = 4
     })
 end)
 
-print("🥚 [STEAL & HATCH ANIME EGGS] Ultimate Auto Hub V2.0 Loaded Successfully!")
+print("🥚 [STEAL & HATCH ANIME EGGS] Ultimate Auto Hub V2.1 (Ultra Smooth) Loaded Successfully!")
