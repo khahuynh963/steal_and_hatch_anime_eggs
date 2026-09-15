@@ -58,6 +58,7 @@ end)
 -- ── State Variables ──
 local State = {
     AutoSteal = false,
+    StealFinalZoneOnly = false, -- CHỈ TRỘM BÃI TRỨNG CUỐI MAP (MAX $/S)
     AutoBringPlot = false,
     AutoPlaceEggs = false,
     InstantHatch = true,
@@ -205,6 +206,213 @@ local function triggerPrompt(prompt)
             fireproximityprompt(prompt)
         end
     end)
+end
+
+-- ── Hệ Thống Đánh Giá & Trộm Trứng Bãi Cuối Map ──
+local function parseFormattedNumber(str)
+    if not str then return 0 end
+    str = str:lower():gsub(",", ""):gsub("%$", ""):gsub("%+", "")
+    
+    local numStr, sfx = str:match("([%d%.]+)%s*([a-z]*)")
+    if not numStr then return 0 end
+    local val = tonumber(numStr) or 0
+    sfx = sfx or ""
+    
+    local mults = {
+        k = 1e3,
+        m = 1e6,
+        b = 1e9,
+        t = 1e12,
+        qa = 1e15, q = 1e15,
+        qi = 1e18,
+        sx = 1e21,
+        sp = 1e24,
+        oc = 1e27,
+        no = 1e30,
+        dc = 1e33
+    }
+    
+    if mults[sfx] then
+        val = val * mults[sfx]
+    end
+    return val
+end
+
+local function getEggValue(egg)
+    local bestVal = 0
+    local labelFound = ""
+
+    pcall(function()
+        -- 1. Quét các TextLabel, BillboardGui, SurfaceGui
+        for _, desc in ipairs(egg:GetDescendants()) do
+            if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+                local text = desc.Text
+                if text and #text > 0 then
+                    local lower = text:lower()
+
+                    -- Ưu tiên 1: Có chứa mẫu $/s hoặc /s hoặc /sec (Tiền mỗi giây)
+                    local perSecPattern = lower:match("([%+%s%$]*[%d%,%.]+%s*[a-zA-Z]*%s*/%s*s%w*)")
+                    if perSecPattern then
+                        local v = parseFormattedNumber(perSecPattern)
+                        if v > 0 then
+                            v = v * 10 -- Tăng trọng số ưu tiên tiền/s thật sự
+                            if v > bestVal then
+                                bestVal = v
+                                labelFound = text
+                            end
+                        end
+                    end
+
+                    -- Ưu tiên 2: Định dạng số kèm ký tự tiền tệ hoặc đơn vị
+                    local valPattern = lower:match("([%$%+]?[%d%,%.]+%s*[kmbtq]?[a-z]*)")
+                    if valPattern then
+                        local v = parseFormattedNumber(valPattern)
+                        if v > bestVal then
+                            bestVal = v
+                            labelFound = text
+                        end
+                    end
+
+                    -- Hệ số độ hiếm (Secret / Divine / Celestial / Mythic...)
+                    if lower:find("secret") then bestVal = math.max(bestVal, 1e16)
+                    elseif lower:find("divine") then bestVal = math.max(bestVal, 1e14)
+                    elseif lower:find("celestial") then bestVal = math.max(bestVal, 1e12)
+                    elseif lower:find("mythic") then bestVal = math.max(bestVal, 1e10)
+                    elseif lower:find("legendary") then bestVal = math.max(bestVal, 1e8)
+                    elseif lower:find("epic") then bestVal = math.max(bestVal, 1e6)
+                    end
+                end
+            elseif desc:IsA("NumberValue") or desc:IsA("IntValue") then
+                local dName = desc.Name:lower()
+                if dName:find("income") or dName:find("value") or dName:find("price") or dName:find("cash") or dName:find("speed") or dName:find("rate") or dName:find("persec") or dName:find("tier") then
+                    local v = tonumber(desc.Value) or 0
+                    if v > bestVal then
+                        bestVal = v
+                        labelFound = tostring(v) .. "/s"
+                    end
+                end
+            end
+        end
+
+        -- Quét tên Model quả trứng
+        local lowerName = egg.Name:lower()
+        local tierNum = lowerName:match("tier%s*(%d+)") or lowerName:match("egg%s*(%d+)")
+        if tierNum then
+            local tVal = (tonumber(tierNum) or 0) * 1e7
+            if tVal > bestVal then bestVal = tVal end
+        end
+        if lowerName:find("secret") then bestVal = math.max(bestVal, 1e16)
+        elseif lowerName:find("divine") then bestVal = math.max(bestVal, 1e14)
+        elseif lowerName:find("celestial") then bestVal = math.max(bestVal, 1e12)
+        elseif lowerName:find("mythic") then bestVal = math.max(bestVal, 1e10)
+        elseif lowerName:find("legendary") then bestVal = math.max(bestVal, 1e8)
+        end
+    end)
+
+    return bestVal, labelFound
+end
+
+local function getBestFinalZoneEgg()
+    local bestEgg = nil
+    local bestScore = -1
+    local bestLabel = ""
+    local maxDist = 0
+    local origin = Vector3.new(0, 0, 0)
+    
+    local plot = getPlayerPlot()
+    if plot then
+        local sp = plot:FindFirstChild("Spawn") or plot:FindFirstChildWhichIsA("BasePart")
+        if sp then origin = sp.Position end
+    else
+        local hrp = getRootPart()
+        if hrp then origin = hrp.Position end
+    end
+
+    -- 1. Thu thập tất cả trứng có thể trộm
+    local candidates = {}
+    local seen = {}
+
+    local function addEggCandidate(obj)
+        if not obj or not obj.Parent or seen[obj] then return end
+        local prompt = obj:IsA("ProximityPrompt") and obj or obj:FindFirstChildOfClass("ProximityPrompt") or obj:FindFirstChild("Prompt", true)
+        local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+        if prompt and part then
+            seen[obj] = true
+            local dist = (part.Position - origin).Magnitude
+            if dist > 80 then -- Không lấy trứng trong căn cứ
+                table.insert(candidates, {egg = obj, part = part, prompt = prompt, dist = dist})
+                if dist > maxDist then
+                    maxDist = dist
+                end
+            end
+        end
+    end
+
+    for _, egg in ipairs(Cache.Eggs) do
+        addEggCandidate(egg)
+    end
+
+    for _, prompt in ipairs(Cache.Prompts) do
+        if prompt and prompt.Parent then
+            local model = prompt.Parent:IsA("Model") and prompt.Parent or (prompt.Parent.Parent and prompt.Parent.Parent:IsA("Model") and prompt.Parent.Parent)
+            if model and model ~= Workspace then
+                addEggCandidate(model)
+            else
+                addEggCandidate(prompt.Parent)
+            end
+        end
+    end
+
+    for _, folderName in ipairs({"Eggs", "EggSpawns", "MapEggs", "SpawnedEggs", "Zones"}) do
+        local f = Workspace:FindFirstChild(folderName)
+        if f then
+            for _, item in ipairs(f:GetChildren()) do
+                addEggCandidate(item)
+            end
+        end
+    end
+
+    if maxDist == 0 or #candidates == 0 then return nil, 0, "" end
+
+    -- 2. Lọc CHỈ CÁC TRỨNG THUỘC BÃI CUỐI MAP (trong khoảng 250 studs quanh mốc xa nhất)
+    local finalZoneEggs = {}
+    for _, item in ipairs(candidates) do
+        if (maxDist - item.dist) <= 250 then
+            table.insert(finalZoneEggs, item)
+        end
+    end
+
+    -- 3. Chọn quả trứng có tiền/s cao nhất ($/s cao nhất)
+    for _, item in ipairs(finalZoneEggs) do
+        local val, label = getEggValue(item.egg)
+        local score = (val > 0) and val or item.dist
+        if score > bestScore then
+            bestScore = score
+            bestEgg = item.egg
+            bestLabel = label
+        end
+    end
+
+    return bestEgg, bestScore, bestLabel
+end
+
+local function stealTargetEgg(egg)
+    if not egg or not egg.Parent then return false end
+    local prompt = egg:IsA("ProximityPrompt") and egg or egg:FindFirstChildOfClass("ProximityPrompt") or egg:FindFirstChild("Prompt", true)
+    local part = egg:IsA("BasePart") and egg or egg:FindFirstChildWhichIsA("BasePart")
+    local hrp = getRootPart()
+    if prompt and part and hrp then
+        local hoverOffset = (State.FlyAboveGround or State.AntiTrap) and 4.5 or 3
+        -- Bay trực tiếp trên đầu quả trứng ở bãi cuối
+        hrp.CFrame = part.CFrame * CFrame.new(0, hoverOffset, 0)
+        task.wait(0.08)
+        triggerPrompt(prompt)
+        task.wait(0.12)
+        triggerPrompt(prompt)
+        task.wait(0.08)
+        return true
+    end
+    return false
 end
 
 -- ── Anti-AFK Setup ──
@@ -532,10 +740,66 @@ end
 
 -- SECTION 1: TRỘM & ẤP TRỨNG
 createSectionHeader("🥚 Trộm & Ấp Trứng")
-createToggle("Tự Động Trộm Trứng (Auto Steal)", State.AutoSteal, function(v)
+
+createButton("⚡ TRỘM TRỨNG CUỐI MAP (1 Lần -> Hết)", function()
+    task.spawn(function()
+        setStatus("🚀 Đang tìm bãi trứng cuối map...")
+        local bestEgg, score, label = getBestFinalZoneEgg()
+        if bestEgg then
+            local info = (#label > 0) and (" [" .. label .. "]") or (score > 0 and (" ($/s: " .. math.floor(score) .. ")") or "")
+            setStatus("🏃 Đang đến bãi cuối trộm: " .. bestEgg.Name .. info)
+            local ok = stealTargetEgg(bestEgg)
+            if ok then
+                task.wait(0.2)
+                local plot = getPlayerPlot()
+                local hrp = getRootPart()
+                if plot and hrp then
+                    local spawnPad = plot:FindFirstChild("Spawn") or plot:FindFirstChildWhichIsA("BasePart")
+                    if spawnPad then
+                        hrp.CFrame = spawnPad.CFrame * CFrame.new(0, 4, 0)
+                    end
+                    task.wait(0.2)
+                    local hatchers = plot:FindFirstChild("Hatchers") or plot:FindFirstChild("Incubators") or plot:FindFirstChild("EggPads")
+                    if hatchers then
+                        for _, pad in ipairs(hatchers:GetChildren()) do
+                            local prompt = pad:FindFirstChildOfClass("ProximityPrompt", true)
+                            if prompt and prompt.Enabled then
+                                local pPart = pad:IsA("BasePart") and pad or pad:FindFirstChildWhichIsA("BasePart")
+                                if pPart then
+                                    hrp.CFrame = pPart.CFrame * CFrame.new(0, 3, 0)
+                                    task.wait(0.08)
+                                    triggerPrompt(prompt)
+                                end
+                            end
+                        end
+                    end
+                end
+                setStatus("✅ ĐÃ TRỘM XONG TRỨNG CUỐI MAP! -> HẾT.")
+            else
+                setStatus("❌ Không thể kích hoạt Prompt trứng!")
+            end
+        else
+            setStatus("❌ Không tìm thấy bãi trứng cuối map!")
+        end
+    end)
+end)
+
+createToggle("🎯 Chỉ Trộm Bãi Trứng Cuối (Max $/s)", State.StealFinalZoneOnly, function(v)
+    State.StealFinalZoneOnly = v
+    if v then
+        State.AutoSteal = false
+    end
+    setStatus(v and "Đang tập trung trộm bãi trứng cuối map..." or "Đã dừng trộm bãi cuối.")
+end)
+
+createToggle("Tự Động Trộm Mọi Trứng (Auto Steal)", State.AutoSteal, function(v)
     State.AutoSteal = v
+    if v then
+        State.StealFinalZoneOnly = false
+    end
     setStatus(v and "Đang trộm trứng mượt mà..." or "Đã dừng trộm trứng.")
 end)
+
 createToggle("Tự Đem Trứng Về Base & Xếp Máy", State.AutoPlaceEggs, function(v) State.AutoPlaceEggs = v end)
 createToggle("Mở Trứng Tức Thì (0s Hold Prompt)", State.InstantHatch, function(v)
     State.InstantHatch = v
@@ -681,7 +945,42 @@ end)
 task.spawn(function()
     while true do
         task.wait(0.3)
-        if State.AutoSteal then
+        if State.StealFinalZoneOnly then
+            pcall(function()
+                local hrp = getRootPart()
+                if not hrp then return end
+
+                local bestEgg, score, label = getBestFinalZoneEgg()
+                if bestEgg then
+                    local ok = stealTargetEgg(bestEgg)
+                    if ok and (State.AutoPlaceEggs or State.AutoBringPlot) then
+                        task.wait(0.15)
+                        local plot = getPlayerPlot()
+                        if plot then
+                            local spawnPad = plot:FindFirstChild("Spawn") or plot:FindFirstChildWhichIsA("BasePart")
+                            if spawnPad then
+                                hrp.CFrame = spawnPad.CFrame * CFrame.new(0, 4, 0)
+                            end
+                            task.wait(0.15)
+                            local hatchers = plot:FindFirstChild("Hatchers") or plot:FindFirstChild("Incubators") or plot:FindFirstChild("EggPads")
+                            if hatchers then
+                                for _, pad in ipairs(hatchers:GetChildren()) do
+                                    local prompt = pad:FindFirstChildOfClass("ProximityPrompt", true)
+                                    if prompt and prompt.Enabled then
+                                        local pPart = pad:IsA("BasePart") and pad or pad:FindFirstChildWhichIsA("BasePart")
+                                        if pPart then
+                                            hrp.CFrame = pPart.CFrame * CFrame.new(0, 3, 0)
+                                            task.wait(0.08)
+                                            triggerPrompt(prompt)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        elseif State.AutoSteal then
             pcall(function()
                 local hrp = getRootPart()
                 if not hrp then return end
@@ -689,7 +988,7 @@ task.spawn(function()
                 local hoverOffset = (State.FlyAboveGround or State.AntiTrap) and 4.5 or 3
 
                 for _, egg in ipairs(Cache.Eggs) do
-                    if not State.AutoSteal then break end
+                    if not State.AutoSteal or State.StealFinalZoneOnly then break end
                     if egg and egg.Parent then
                         local prompt = egg:IsA("ProximityPrompt") and egg or egg:FindFirstChildOfClass("ProximityPrompt") or egg:FindFirstChild("Prompt", true)
                         if prompt and prompt.Enabled then

@@ -17,6 +17,8 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/khahuynh963/steal_and
 ## ✨ Tính Năng Nổi Bật
 
 ### 🥚 **Auto Steal & Auto Hatch**
+* **⚡ Trộm Trứng Cuối Map (1 Lần -> Hết)**: Tự động chạy/bay thẳng tới bãi trứng ở cuối bản đồ, tìm quả trứng có tiền/s ($/s) cao nhất, trộm và đem về máy ấp ở căn cứ rồi dừng ngay.
+* **🎯 Chỉ Trộm Bãi Trứng Cuối (Max $/s)**: Chế độ Farm liên tục chỉ tập trung trộm trứng có $/s cao nhất ở bãi cuối map, bỏ qua tất cả trứng rác ở các bãi đầu.
 * **Auto Steal Eggs**: Tự động dịch chuyển và trộm trứng từ các Biome Anime / Trùm mà không lo bị phát hiện.
 * **Auto Teleport to Plot & Auto Place**: Tự động đưa trứng trộm được về căn cứ (Plot) và xếp vào máy ấp.
 * **Instant Hatch (0s Hold)**: Tự động loại bỏ thời gian giữ nút mở trứng, mở trứng tức thì.
