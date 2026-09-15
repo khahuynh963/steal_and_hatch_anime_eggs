@@ -16,4 +16,4 @@ pcall(function()
     end
 end)
 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/khahuynh963/steal_and_hatch_anime_eggs/main/script.lua?" .. math.random(1, 999999)))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/khahuynh963/steal_and_hatch_anime_eggs/main/script.lua?v=" .. tostring(os.time()) .. "_" .. tostring(math.random(10000, 99999))))()

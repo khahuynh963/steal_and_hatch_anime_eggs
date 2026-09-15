@@ -447,33 +447,45 @@ TitleLabel.TextSize = 13
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = TopBar
 
--- Minimize Button (—)
+-- Minimize Button (-)
 local MinimizeBtn = Instance.new("TextButton")
 MinimizeBtn.Name = "MinimizeBtn"
 MinimizeBtn.Size = UDim2.new(0, 30, 0, 30)
 MinimizeBtn.Position = UDim2.new(1, -72, 0, 6)
-MinimizeBtn.BackgroundColor3 = Color3.fromRGB(60, 65, 80)
-MinimizeBtn.Text = "—"
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(50, 55, 75)
+MinimizeBtn.Text = "-"
 MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeBtn.Font = Enum.Font.GothamBold
-MinimizeBtn.TextSize = 14
+MinimizeBtn.TextSize = 20
 MinimizeBtn.Parent = TopBar
 
 local MinimizeBtnCorner = Instance.new("UICorner")
 MinimizeBtnCorner.CornerRadius = UDim.new(0, 6)
 MinimizeBtnCorner.Parent = MinimizeBtn
 
+local MinStroke = Instance.new("UIStroke")
+MinStroke.Color = Color3.fromRGB(100, 110, 140)
+MinStroke.Thickness = 1
+MinStroke.Parent = MinimizeBtn
+
 MinimizeBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = false
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Đã thu nhỏ!",
+            Text = "Bấm icon quả trứng 🥚 bên trái màn hình để mở lại giao diện!",
+            Duration = 3
+        })
+    end)
 end)
 
--- Close Button (✕)
+-- Close Button (X)
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Name = "CloseBtn"
 CloseBtn.Size = UDim2.new(0, 30, 0, 30)
 CloseBtn.Position = UDim2.new(1, -36, 0, 6)
 CloseBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-CloseBtn.Text = "✕"
+CloseBtn.Text = "X"
 CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseBtn.Font = Enum.Font.GothamBold
 CloseBtn.TextSize = 14
@@ -790,4 +802,12 @@ addButton(SettingsPage, "🌐 Chuyển Server Mới (Server Hop)", function()
     end)
 end)
 
-print("🥚 [STEAL & HATCH ANIME EGGS] Ultimate Auto Hub V1.0 Tiếng Việt Đã Sẵn Sàng!")
+pcall(function()
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Trộm & Ấp Trứng Anime",
+        Text = "Phiên bản Tiếng Việt V1.1 đã sẵn sàng!",
+        Duration = 4
+    })
+end)
+
+print("🥚 [STEAL & HATCH ANIME EGGS] Ultimate Auto Hub V1.1 Tiếng Việt Đã Sẵn Sàng!")
