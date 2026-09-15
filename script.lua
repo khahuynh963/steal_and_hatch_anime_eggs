@@ -1,19 +1,8 @@
 --[[
     ===================================================================
-    🥚 STEAL & HATCH ANIME EGGS! - ULTIMATE AUTO HUB V1.0
+    🥚 STEAL & HATCH ANIME EGGS! - ULTIMATE AUTO HUB V2.0 (STABLE)
     Tự động chơi toàn diện tiếng Việt cho tựa game Steal and Hatch Anime Eggs trên Roblox!
-    
-    Tính năng chính:
-    1. 🥚 Auto Steal Eggs (Tự động trộm trứng từ tất cả Biome / Trùm)
-    2. 🏠 Auto Teleport Plot & Auto Place (Tự động ấp trứng tại Plot)
-    3. ⚡ Instant Hatch 0s Hold (Mở trứng siêu tốc không cần giữ)
-    4. 🏃 Auto Train & Treadmill Farm (Tự động chạy máy tập luyện tăng Speed)
-    5. 💰 Auto Magnet Coins & Gems (Tự động hút toàn bộ Tiền & Kim cương)
-    6. 🔄 Auto Rebirth & Auto Upgrades (Tự động Trùng sinh & Nâng cấp)
-    7. 🔍 Egg ESP & Biome Teleports (Hiển thị vị trí Trứng Hiếm & Dịch chuyển)
-    8. 🚀 Speed Slider, CFrame Step Boost, Noclip, Infinite Jump
-    9. 🛡️ Anti-AFK 24/7 Treo máy xuyên đêm
-    10. ➖ Nút Thu Nhỏ Cửa Sổ & Tắt Hẳn GUI
+    Tương thích 100% Delta Executor (Android & PC), Wave, Codex, Fluxus.
     ===================================================================
 --]]
 
@@ -22,9 +11,9 @@ local VirtualUser = game:GetService("VirtualUser")
 local TeleportService = game:GetService("TeleportService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterGui = game:GetService("StarterGui")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -65,18 +54,16 @@ pcall(function()
     end
 end)
 
--- ── Global State Settings ──
+-- ── State Variables ──
 local State = {
     AutoSteal = false,
-    StealPriority = "All", -- All, Mythic, Divine, Secret
-    SelectedBiome = "All",
     AutoBringPlot = false,
     AutoPlaceEggs = false,
     InstantHatch = true,
     
-    AntiTrap = true,          -- Tự động né và vô hiệu hóa bẫy (gấu, gai, mìn)
-    AntiStun = true,          -- Chống bị kẹp bẫy, khựng nhân vật
-    FlyAboveGround = true,    -- Trộm trứng và di chuyển trên không tránh bẫy
+    AntiTrap = true,
+    AntiStun = true,
+    FlyAboveGround = true,
     
     AutoTrain = false,
     AutoClickTrain = false,
@@ -87,41 +74,42 @@ local State = {
     
     EggESP = false,
     
+    SpeedEnabled = false,
     WalkSpeed = 150,
-    EnableWalkSpeed = false,
     CFrameBoost = true,
-    CFrameSpeed = 6,          -- Siêu tốc lướt CFrame
+    CFrameSpeed = 6,
     InfiniteJump = false,
     Noclip = false,
     
     AntiAFK = true
 }
 
--- ESP Storage
 local ESPHighlights = {}
 
 -- ── Instant ProximityPrompt Hook ──
 local function applyInstantPrompts()
     pcall(function()
         for _, prompt in pairs(Workspace:GetDescendants()) do
-            if prompt:IsA("ProximityPrompt") then
-                if State.InstantHatch then
-                    prompt.HoldDuration = 0
-                end
+            if prompt:IsA("ProximityPrompt") and State.InstantHatch then
+                prompt.RequiresLineOfSight = false
+                prompt.HoldDuration = 0
             end
         end
     end)
 end
 
-Workspace.DescendantAdded:Connect(function(descendant)
-    if descendant:IsA("ProximityPrompt") and State.InstantHatch then
-        descendant.HoldDuration = 0
-    end
+pcall(function()
+    Workspace.DescendantAdded:Connect(function(descendant)
+        if descendant:IsA("ProximityPrompt") and State.InstantHatch then
+            descendant.RequiresLineOfSight = false
+            descendant.HoldDuration = 0
+        end
+    end)
 end)
 
--- ── Helper Functions ──
+-- ── Helper Functions (Safe & Non-Yielding) ──
 local function getCharacter()
-    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    return LocalPlayer.Character
 end
 
 local function getRootPart()
@@ -134,7 +122,6 @@ local function getHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
--- Find Player Plot
 local function getPlayerPlot()
     local plots = Workspace:FindFirstChild("Plots") or Workspace:FindFirstChild("Bases") or Workspace:FindFirstChild("Tycoons")
     if plots then
@@ -148,10 +135,20 @@ local function getPlayerPlot()
     return nil
 end
 
--- ── Main Auto Loops ──
+local function triggerPrompt(prompt)
+    if not prompt or not prompt:IsA("ProximityPrompt") then return end
+    pcall(function()
+        prompt.RequiresLineOfSight = false
+        prompt.HoldDuration = 0
+        if fireproximityprompt then
+            fireproximityprompt(prompt, 0)
+            fireproximityprompt(prompt)
+        end
+    end)
+end
 
--- 1. Anti-AFK
-task.spawn(function()
+-- ── Anti-AFK Setup ──
+pcall(function()
     LocalPlayer.Idled:Connect(function()
         if State.AntiAFK then
             VirtualUser:Button2Down(Vector2.new(0, 0), Workspace.CurrentCamera.CFrame)
@@ -161,44 +158,45 @@ task.spawn(function()
     end)
 end)
 
--- 2. Fast CFrame Movement & Speed Boost
+-- ── Stepped Loop: Speed, CFrame Dash, Air Hover, Noclip ──
 RunService.Stepped:Connect(function()
-    pcall(function()
-        local char = getCharacter()
-        local hrp = getRootPart()
-        local hum = getHumanoid()
+    local char = LocalPlayer.Character
+    if not char then return end
 
-        if hum and State.EnableWalkSpeed then
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+
+    if hum and State.SpeedEnabled then
+        if hum.WalkSpeed ~= State.WalkSpeed then
             hum.WalkSpeed = State.WalkSpeed
         end
+    end
 
-        if hrp and hum and State.CFrameBoost and hum.MoveDirection.Magnitude > 0 then
-            hrp.CFrame = hrp.CFrame + (hum.MoveDirection * State.CFrameSpeed)
-        end
+    if hrp and hum and State.CFrameBoost and hum.MoveDirection.Magnitude > 0 then
+        hrp.CFrame = hrp.CFrame + (hum.MoveDirection * (State.CFrameSpeed * 0.35))
+    end
 
-        -- Bay lơ lửng trên không khi di chuyển tránh bẫy dưới sàn
-        if State.FlyAboveGround and hrp and hum and hum.MoveDirection.Magnitude > 0 then
-            local ray = Ray.new(hrp.Position, Vector3.new(0, -10, 0))
-            local hit, pos = Workspace:FindPartOnRayWithIgnoreList(ray, {char})
-            if hit then
-                local targetY = pos.Y + 5
-                if hrp.Position.Y < targetY then
-                    hrp.CFrame = CFrame.new(hrp.Position.X, targetY, hrp.Position.Z) * hrp.CFrame.Rotation
-                end
+    if State.FlyAboveGround and hrp and hum and hum.MoveDirection.Magnitude > 0 then
+        local ray = Ray.new(hrp.Position, Vector3.new(0, -12, 0))
+        local hit, pos = Workspace:FindPartOnRayWithIgnoreList(ray, {char})
+        if hit then
+            local targetY = pos.Y + 5.5
+            if hrp.Position.Y < targetY then
+                hrp.CFrame = CFrame.new(hrp.Position.X, targetY, hrp.Position.Z) * hrp.CFrame.Rotation
             end
         end
+    end
 
-        if State.Noclip and char then
-            for _, part in pairs(char:GetDescendants()) do
-                if part:IsA("BasePart") and part.CanCollide then
-                    part.CanCollide = false
-                end
+    if State.Noclip then
+        for _, part in pairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part.CanCollide then
+                part.CanCollide = false
             end
         end
-    end)
+    end
 end)
 
--- 3. Infinite Jump
+-- ── Infinite Jump ──
 UserInputService.JumpRequest:Connect(function()
     if State.InfiniteJump then
         local hum = getHumanoid()
@@ -208,30 +206,415 @@ UserInputService.JumpRequest:Connect(function()
     end
 end)
 
--- 4. Auto Steal Eggs Loop (Với Tọa Độ Trên Không Tránh Trap Dưới Đất)
+-- ═══════════════════════════════════════════════════════════
+-- 🎨 GIAO DIỆN ĐIỀU KHIỂN CHUẨN MOBILE & PC (DELTA COMPACT)
+-- ═══════════════════════════════════════════════════════════
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "StealAnimeEggsGui"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = getGuiContainer()
+
+-- Main Frame (Kích thước tối ưu gọn gàng cho Mobile & PC)
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 320, 0, 440)
+MainFrame.Position = UDim2.new(0.5, -160, 0.2, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(18, 22, 32)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 12)
+MainCorner.Parent = MainFrame
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(255, 140, 0)
+MainStroke.Thickness = 2
+MainStroke.Parent = MainFrame
+
+-- Topbar Header
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1, 0, 0, 40)
+TopBar.BackgroundColor3 = Color3.fromRGB(26, 32, 48)
+TopBar.BorderSizePixel = 0
+TopBar.Parent = MainFrame
+
+local TopBarCorner = Instance.new("UICorner")
+TopBarCorner.CornerRadius = UDim.new(0, 12)
+TopBarCorner.Parent = TopBar
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -75, 1, 0)
+Title.Position = UDim2.new(0, 12, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "🥚 TRỘM & ẤP TRỨNG ANIME HUB"
+Title.TextColor3 = Color3.fromRGB(255, 200, 50)
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 13
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TopBar
+
+-- Buttons on TopBar (Minimize & Close)
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0, 28, 0, 28)
+MinBtn.Position = UDim2.new(1, -64, 0, 6)
+MinBtn.BackgroundColor3 = Color3.fromRGB(45, 55, 75)
+MinBtn.Text = "—"
+MinBtn.TextColor3 = Color3.fromRGB(220, 230, 250)
+MinBtn.Font = Enum.Font.SourceSansBold
+MinBtn.TextSize = 13
+MinBtn.Parent = TopBar
+local minCorner = Instance.new("UICorner")
+minCorner.CornerRadius = UDim.new(0, 6)
+minCorner.Parent = MinBtn
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 28, 0, 28)
+CloseBtn.Position = UDim2.new(1, -32, 0, 6)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 45, 45)
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Font = Enum.Font.SourceSansBold
+CloseBtn.TextSize = 12
+CloseBtn.Parent = TopBar
+local clsCorner = Instance.new("UICorner")
+clsCorner.CornerRadius = UDim.new(0, 6)
+clsCorner.Parent = CloseBtn
+
+-- Floating Icon (Bật/Tắt thu nhỏ cho Mobile)
+local FloatingBtn = Instance.new("TextButton")
+FloatingBtn.Size = UDim2.new(0, 50, 0, 50)
+FloatingBtn.Position = UDim2.new(0, 15, 0.35, 0)
+FloatingBtn.BackgroundColor3 = Color3.fromRGB(255, 120, 0)
+FloatingBtn.Text = "🥚"
+FloatingBtn.TextSize = 24
+FloatingBtn.Visible = false
+FloatingBtn.Parent = ScreenGui
+local fltCorner = Instance.new("UICorner")
+fltCorner.CornerRadius = UDim.new(1, 0)
+fltCorner.Parent = FloatingBtn
+local fltStroke = Instance.new("UIStroke")
+fltStroke.Color = Color3.fromRGB(255, 255, 255)
+fltStroke.Thickness = 2
+fltStroke.Parent = FloatingBtn
+
+MinBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+    FloatingBtn.Visible = true
+end)
+
+FloatingBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = true
+    FloatingBtn.Visible = false
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
+
+-- Draggable Helper Function
+local function makeDraggable(guiObject, handle)
+    handle = handle or guiObject
+    local dragging, dragInput, dragStart, startPos
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = guiObject.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    handle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            guiObject.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+makeDraggable(MainFrame, TopBar)
+makeDraggable(FloatingBtn)
+
+-- Live Status Bar
+local StatusFrame = Instance.new("Frame")
+StatusFrame.Size = UDim2.new(1, -20, 0, 26)
+StatusFrame.Position = UDim2.new(0, 10, 0, 46)
+StatusFrame.BackgroundColor3 = Color3.fromRGB(24, 30, 44)
+StatusFrame.BorderSizePixel = 0
+StatusFrame.Parent = MainFrame
+local sfCorner = Instance.new("UICorner")
+sfCorner.CornerRadius = UDim.new(0, 6)
+sfCorner.Parent = StatusFrame
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, -12, 1, 0)
+StatusLabel.Position = UDim2.new(0, 6, 0, 0)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "🟢 Trạng thái: Sẵn sàng hoạt động"
+StatusLabel.TextColor3 = Color3.fromRGB(0, 230, 180)
+StatusLabel.Font = Enum.Font.SourceSansBold
+StatusLabel.TextSize = 11
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.Parent = StatusFrame
+
+local function setStatus(msg)
+    StatusLabel.Text = "🟢 " .. msg
+end
+
+-- Scroll Content Frame
+local Scroll = Instance.new("ScrollingFrame")
+Scroll.Size = UDim2.new(1, -20, 1, -85)
+Scroll.Position = UDim2.new(0, 10, 0, 78)
+Scroll.BackgroundTransparency = 1
+Scroll.BorderSizePixel = 0
+Scroll.ScrollBarThickness = 4
+Scroll.ScrollBarImageColor3 = Color3.fromRGB(255, 140, 0)
+Scroll.Parent = MainFrame
+
+local UIList = Instance.new("UIListLayout")
+UIList.SortOrder = Enum.SortOrder.LayoutOrder
+UIList.Padding = UDim.new(0, 6)
+UIList.Parent = Scroll
+
+UIList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    Scroll.CanvasSize = UDim2.new(0, 0, 0, UIList.AbsoluteContentSize.Y + 20)
+end)
+
+-- Component Helper: Section Header
+local function createSectionHeader(titleText)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 0, 22)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = "─── " .. string.upper(titleText) .. " ───"
+    lbl.TextColor3 = Color3.fromRGB(255, 165, 0)
+    lbl.Font = Enum.Font.SourceSansBold
+    lbl.TextSize = 12
+    lbl.Parent = Scroll
+end
+
+-- Component Helper: Toggle Button
+local function createToggle(titleText, defaultVal, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -4, 0, 34)
+    btn.BackgroundColor3 = defaultVal and Color3.fromRGB(0, 160, 90) or Color3.fromRGB(28, 35, 50)
+    btn.Text = titleText .. ": " .. (defaultVal and "BẬT" or "TẮT")
+    btn.TextColor3 = defaultVal and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 215, 230)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 12
+    btn.Parent = Scroll
+
+    local bCorner = Instance.new("UICorner")
+    bCorner.CornerRadius = UDim.new(0, 6)
+    bCorner.Parent = btn
+
+    local bStroke = Instance.new("UIStroke")
+    bStroke.Color = defaultVal and Color3.fromRGB(0, 220, 120) or Color3.fromRGB(50, 62, 85)
+    bStroke.Parent = btn
+
+    local state = defaultVal
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        btn.BackgroundColor3 = state and Color3.fromRGB(0, 160, 90) or Color3.fromRGB(28, 35, 50)
+        btn.Text = titleText .. ": " .. (state and "BẬT" or "TẮT")
+        btn.TextColor3 = state and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 215, 230)
+        bStroke.Color = state and Color3.fromRGB(0, 220, 120) or Color3.fromRGB(50, 62, 85)
+        callback(state)
+    end)
+
+    return btn
+end
+
+-- Component Helper: Action Button
+local function createButton(titleText, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -4, 0, 32)
+    btn.BackgroundColor3 = Color3.fromRGB(38, 48, 70)
+    btn.Text = titleText
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 12
+    btn.Parent = Scroll
+
+    local bCorner = Instance.new("UICorner")
+    bCorner.CornerRadius = UDim.new(0, 6)
+    bCorner.Parent = btn
+
+    local bStroke = Instance.new("UIStroke")
+    bStroke.Color = Color3.fromRGB(255, 140, 0)
+    bStroke.Thickness = 1
+    bStroke.Parent = btn
+
+    btn.MouseButton1Click:Connect(function()
+        pcall(callback)
+    end)
+
+    return btn
+end
+
+-- ═══════════════════════════════════════════════════════════
+-- 🎛️ BUILD CONTROLS & FEATURES
+-- ═══════════════════════════════════════════════════════════
+
+-- SECTION 1: TRỘM & ẤP TRỨNG
+createSectionHeader("🥚 Trộm & Ấp Trứng")
+createToggle("Tự Động Trộm Trứng (Auto Steal)", State.AutoSteal, function(v)
+    State.AutoSteal = v
+    setStatus(v and "Đang tự động trộm trứng..." or "Đã dừng trộm trứng.")
+end)
+createToggle("Tự Đem Trứng Về Base & Xếp Máy", State.AutoPlaceEggs, function(v) State.AutoPlaceEggs = v end)
+createToggle("Mở Trứng Tức Thì (0s Hold Prompt)", State.InstantHatch, function(v)
+    State.InstantHatch = v
+    applyInstantPrompts()
+end)
+
+-- SECTION 2: NÉ TRAP & BẢO VỆ
+createSectionHeader("🛡️ Né Trap & Bảo Vệ")
+createToggle("Né & Vô Hiệu Hóa Mọi Trap (Bẫy/Gai)", State.AntiTrap, function(v) State.AntiTrap = v end)
+createToggle("Chống Kẹp Bẫy / Khựng (Anti-Stun)", State.AntiStun, function(v) State.AntiStun = v end)
+createToggle("Bay Lơ Lửng Trên Không (Tránh Bẫy)", State.FlyAboveGround, function(v) State.FlyAboveGround = v end)
+
+-- SECTION 3: CÀY TẬP & TIỀN TÀI
+createSectionHeader("⚡ Cày Tập & Tiền Tài")
+createToggle("Tự Động Tập Luyện (Treadmill)", State.AutoTrain, function(v)
+    State.AutoTrain = v
+    setStatus(v and "Đang tự động luyện tập..." or "Đã dừng luyện tập.")
+end)
+createToggle("Tự Động Nhấn Remote Tập Luyện", State.AutoClickTrain, function(v) State.AutoClickTrain = v end)
+createToggle("Hút Toàn Bộ Tiền & Kim Cương", State.AutoCollectCoins, function(v) State.AutoCollectCoins = v end)
+createToggle("Tự Động Trùng Sinh (Auto Rebirth)", State.AutoRebirth, function(v) State.AutoRebirth = v end)
+createToggle("Tự Động Nâng Cấp Chỉ Số (Upgrade)", State.AutoUpgradeStats, function(v) State.AutoUpgradeStats = v end)
+
+-- SECTION 4: SIÊU TỐC ĐỘ & CFRAME
+createSectionHeader("🏃 Siêu Tốc Độ & CFrame")
+createToggle("Bật Tốc Độ Chạy (WalkSpeed)", State.SpeedEnabled, function(v)
+    State.SpeedEnabled = v
+    if not v then
+        local hum = getHumanoid()
+        if hum then hum.WalkSpeed = 16 end
+    end
+end)
+createButton("⚡ Chọn Tốc Độ: 150 Speed", function()
+    State.WalkSpeed = 150
+    State.SpeedEnabled = true
+    setStatus("Đã đặt tốc độ: 150 Speed")
+end)
+createButton("🚀 Chọn Tốc Độ: 300 Speed", function()
+    State.WalkSpeed = 300
+    State.SpeedEnabled = true
+    setStatus("Đã đặt tốc độ: 300 Speed")
+end)
+createButton("🌪️ Chọn Tốc Độ: 500 Speed", function()
+    State.WalkSpeed = 500
+    State.SpeedEnabled = true
+    setStatus("Đã đặt tốc độ: 500 Speed")
+end)
+
+createToggle("Lướt CFrame Siêu Tốc (Không Giật)", State.CFrameBoost, function(v) State.CFrameBoost = v end)
+createButton("🔹 Lướt CFrame: x4 (Mượt Mà)", function()
+    State.CFrameSpeed = 4
+    State.CFrameBoost = true
+    setStatus("Đã đặt CFrame: x4")
+end)
+createButton("⚡ Lướt CFrame: x8 (Cực Nhanh)", function()
+    State.CFrameSpeed = 8
+    State.CFrameBoost = true
+    setStatus("Đã đặt CFrame: x8")
+end)
+createButton("🌪️ Lướt CFrame: x15 (Thần Tốc)", function()
+    State.CFrameSpeed = 15
+    State.CFrameBoost = true
+    setStatus("Đã đặt CFrame: x15")
+end)
+
+createToggle("Nhảy Vô Hạn Trên Không", State.InfiniteJump, function(v) State.InfiniteJump = v end)
+createToggle("Đi Xuyên Tường (Noclip)", State.Noclip, function(v) State.Noclip = v end)
+
+-- SECTION 5: ESP & DỊCH CHUYỂN
+createSectionHeader("🔍 ESP & Dịch Chuyển")
+createToggle("Bật ESP Trứng Hiếm Xuyên Tường", State.EggESP, function(v) State.EggESP = v end)
+createButton("🏠 Dịch Chuyển Về Căn Cứ (Plot)", function()
+    local plot = getPlayerPlot()
+    local hrp = getRootPart()
+    if plot and hrp then
+        local spawnPad = plot:FindFirstChild("Spawn") or plot:FindFirstChildWhichIsA("BasePart")
+        if spawnPad then
+            hrp.CFrame = spawnPad.CFrame * CFrame.new(0, 5, 0)
+            setStatus("Đã dịch chuyển về Base!")
+        end
+    end
+end)
+createButton("⚡ Dịch Chuyển Đến Khu Tập Luyện", function()
+    local train = Workspace:FindFirstChild("Treadmills") or Workspace:FindFirstChild("Training")
+    local hrp = getRootPart()
+    if train and hrp then
+        local part = train:IsA("BasePart") and train or train:FindFirstChildWhichIsA("BasePart")
+        if part then
+            hrp.CFrame = part.CFrame * CFrame.new(0, 5, 0)
+            setStatus("Đã dịch chuyển đến Khu Tập Luyện!")
+        end
+    end
+end)
+
+-- SECTION 6: CÀI ĐẶT & HỆ THỐNG
+createSectionHeader("⚙️ Cài Đặt & Chống AFK")
+createToggle("Chống Văng Game Anti-AFK 24/7", State.AntiAFK, function(v) State.AntiAFK = v end)
+createButton("🔄 Vào Lại Server Hiện Tại", function()
+    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+end)
+createButton("🌐 Đổi Server Mới (Server Hop)", function()
+    pcall(function()
+        local sfUrl = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+        local req = game:HttpGet(sfUrl)
+        if req then
+            local data = game:GetService("HttpService"):JSONDecode(req)
+            if data and data.data then
+                for _, server in pairs(data.data) do
+                    if server.playing < server.maxPlayers and server.id ~= game.JobId then
+                        TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, LocalPlayer)
+                        break
+                    end
+                end
+            end
+        end
+    end)
+end)
+
+-- ═══════════════════════════════════════════════════════════
+-- 🔄 BACKGROUND AUTO WORKERS
+-- ═══════════════════════════════════════════════════════════
+
+-- 1. Auto Steal Eggs Worker
 task.spawn(function()
-    while task.wait(0.25) do
+    while true do
+        task.wait(0.25)
         if State.AutoSteal then
             pcall(function()
                 local hrp = getRootPart()
                 if not hrp then return end
 
                 applyInstantPrompts()
-
-                local hoverHeight = (State.FlyAboveGround or State.AntiTrap) and 4.5 or 3
+                local hoverOffset = (State.FlyAboveGround or State.AntiTrap) and 5 or 3
 
                 local eggSpawns = Workspace:FindFirstChild("Eggs") or Workspace:FindFirstChild("EggSpawns") or Workspace:FindFirstChild("Spawns")
                 if not eggSpawns then
-                    -- Scan Workspace for interactable eggs
                     for _, obj in pairs(Workspace:GetDescendants()) do
-                        if State.AutoSteal and (obj.Name:lower():find("egg") or obj:FindFirstChildOfClass("ProximityPrompt")) then
+                        if not State.AutoSteal then break end
+                        if obj.Name:lower():find("egg") or obj:FindFirstChildOfClass("ProximityPrompt") then
                             local prompt = obj:FindFirstChildOfClass("ProximityPrompt") or obj.Parent:FindFirstChildOfClass("ProximityPrompt")
                             if prompt and prompt.Enabled then
                                 local targetPart = obj:IsA("BasePart") and obj or (obj.Parent:IsA("BasePart") and obj.Parent or nil)
                                 if targetPart then
-                                    hrp.CFrame = targetPart.CFrame * CFrame.new(0, hoverHeight, 0)
+                                    hrp.CFrame = targetPart.CFrame * CFrame.new(0, hoverOffset, 0)
                                     task.wait(0.1)
-                                    fireproximityprompt(prompt)
+                                    triggerPrompt(prompt)
                                     task.wait(0.15)
                                 end
                             end
@@ -244,9 +627,9 @@ task.spawn(function()
                         if prompt and prompt.Enabled then
                             local part = egg:IsA("BasePart") and egg or egg:FindFirstChildWhichIsA("BasePart")
                             if part then
-                                hrp.CFrame = part.CFrame * CFrame.new(0, hoverHeight, 0)
+                                hrp.CFrame = part.CFrame * CFrame.new(0, hoverOffset, 0)
                                 task.wait(0.1)
-                                fireproximityprompt(prompt)
+                                triggerPrompt(prompt)
                                 task.wait(0.15)
                             end
                         end
@@ -257,9 +640,10 @@ task.spawn(function()
     end
 end)
 
--- 5. Auto Place Eggs at Plot
+-- 2. Auto Place Eggs at Plot Worker
 task.spawn(function()
-    while task.wait(0.5) do
+    while true do
+        task.wait(0.5)
         if State.AutoPlaceEggs or State.AutoBringPlot then
             pcall(function()
                 local plot = getPlayerPlot()
@@ -274,12 +658,11 @@ task.spawn(function()
                                 if part then
                                     hrp.CFrame = part.CFrame * CFrame.new(0, 3, 0)
                                     task.wait(0.1)
-                                    fireproximityprompt(prompt)
+                                    triggerPrompt(prompt)
                                 end
                             end
                         end
                     else
-                        -- Teleport to plot center
                         local spawnPad = plot:FindFirstChild("Spawn") or plot:FindFirstChildWhichIsA("BasePart")
                         if spawnPad then
                             hrp.CFrame = spawnPad.CFrame * CFrame.new(0, 4, 0)
@@ -291,97 +674,10 @@ task.spawn(function()
     end
 end)
 
--- 6. Auto Train / Treadmill
+-- 3. Anti-Trap / Trap Dodger Worker
 task.spawn(function()
-    while task.wait(0.5) do
-        if State.AutoTrain then
-            pcall(function()
-                local hrp = getRootPart()
-                if not hrp then return end
-                
-                -- Find Treadmills or Training gear
-                local trainArea = Workspace:FindFirstChild("Treadmills") or Workspace:FindFirstChild("Training") or Workspace:FindFirstChild("Machines")
-                if trainArea then
-                    for _, machine in pairs(trainArea:GetChildren()) do
-                        local prompt = machine:FindFirstChildOfClass("ProximityPrompt", true)
-                        local seat = machine:FindFirstChildOfClass("Seat", true)
-                        if prompt and prompt.Enabled then
-                            local part = machine:IsA("BasePart") and machine or machine:FindFirstChildWhichIsA("BasePart")
-                            if part then
-                                hrp.CFrame = part.CFrame * CFrame.new(0, 3, 0)
-                                task.wait(0.1)
-                                fireproximityprompt(prompt)
-                                break
-                            end
-                        end
-                    end
-                end
-                
-                -- Auto Click Train Remote if exists
-                if State.AutoClickTrain then
-                    for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-                        if remote:IsA("RemoteEvent") and (remote.Name:lower():find("train") or remote.Name:lower():find("click")) then
-                            remote:FireServer()
-                        end
-                    end
-                end
-            end)
-        end
-    end
-end)
-
--- 7. Auto Collect Coins & Gems (Magnet)
-task.spawn(function()
-    while task.wait(0.3) do
-        if State.AutoCollectCoins then
-            pcall(function()
-                local hrp = getRootPart()
-                if not hrp then return end
-                
-                for _, obj in pairs(Workspace:GetDescendants()) do
-                    if obj:IsA("BasePart") and (obj.Name:lower():find("coin") or obj.Name:lower():find("gem") or obj.Name:lower():find("orb") or obj.Name:lower():find("drop")) then
-                        obj.CFrame = hrp.CFrame
-                    end
-                end
-            end)
-        end
-    end
-end)
-
--- 8. Auto Rebirth & Auto Upgrade
-task.spawn(function()
-    while task.wait(1) do
-        if State.AutoRebirth then
-            pcall(function()
-                for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-                    if remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") then
-                        if remote.Name:lower():find("rebirth") then
-                            if remote:IsA("RemoteEvent") then
-                                remote:FireServer()
-                            else
-                                remote:InvokeServer()
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-        if State.AutoUpgradeStats then
-            pcall(function()
-                for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-                    if remote:IsA("RemoteEvent") and (remote.Name:lower():find("upgrade") or remote.Name:lower():find("buy")) then
-                        remote:FireServer("Speed")
-                        remote:FireServer("Storage")
-                        remote:FireServer("Multiplier")
-                    end
-                end
-            end)
-        end
-    end
-end)
--- 10. Trap Avoidance & Anti-Trap Loop (Vô hiệu hóa bẫy gấu, gai, mìn)
-task.spawn(function()
-    while task.wait(0.4) do
+    while true do
+        task.wait(0.4)
         if State.AntiTrap then
             pcall(function()
                 for _, obj in pairs(Workspace:GetDescendants()) do
@@ -413,9 +709,10 @@ task.spawn(function()
     end
 end)
 
--- 11. Anti-Stun & Anti-Ragdoll (Chống bị kẹp bẫy / Không khựng di chuyển)
+-- 4. Anti-Stun / Anti-Ragdoll Worker
 task.spawn(function()
-    while task.wait(0.15) do
+    while true do
+        task.wait(0.15)
         if State.AntiStun then
             pcall(function()
                 local hum = getHumanoid()
@@ -431,476 +728,132 @@ task.spawn(function()
     end
 end)
 
--- 9. Egg ESP System
-local function updateESP()
-    for obj, highlight in pairs(ESPHighlights) do
-        if not obj or not obj.Parent or not State.EggESP then
-            highlight:Destroy()
-            ESPHighlights[obj] = nil
-        end
-    end
-
-    if State.EggESP then
-        pcall(function()
-            for _, obj in pairs(Workspace:GetDescendants()) do
-                if (obj.Name:lower():find("egg") or obj:FindFirstChildOfClass("ProximityPrompt")) and not ESPHighlights[obj] then
-                    if obj:IsA("Model") or obj:IsA("BasePart") then
-                        local hl = Instance.new("Highlight")
-                        hl.Adornee = obj
-                        hl.FillColor = Color3.fromRGB(255, 170, 0)
-                        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-                        hl.FillTransparency = 0.4
-                        hl.Parent = getGuiContainer()
-                        ESPHighlights[obj] = hl
-                    end
-                end
-            end
-        end)
-    end
-end
-
+-- 5. Auto Train Worker
 task.spawn(function()
-    while task.wait(2) do
-        if State.EggESP then
-            updateESP()
-        end
-    end
-end)
+    while true do
+        task.wait(0.5)
+        if State.AutoTrain then
+            pcall(function()
+                local hrp = getRootPart()
+                if not hrp then return end
 
--- ── MODERN MOBILE & PC DRAGGABLE GUI ──
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "StealAnimeEggsGui"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = getGuiContainer()
-
--- Main Outer Frame
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 520, 0, 360)
-MainFrame.Position = UDim2.new(0.5, -260, 0.5, -180)
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 22, 30)
-MainFrame.BorderSizePixel = 0
-MainFrame.ClipsDescendants = true
-MainFrame.Parent = ScreenGui
-
-local MainUICorner = Instance.new("UICorner")
-MainUICorner.CornerRadius = UDim.new(0, 12)
-MainUICorner.Parent = MainFrame
-
-local MainUIStroke = Instance.new("UIStroke")
-MainUIStroke.Color = Color3.fromRGB(255, 120, 0)
-MainUIStroke.Thickness = 2
-MainUIStroke.Parent = MainFrame
-
--- Top Bar Header
-local TopBar = Instance.new("Frame")
-TopBar.Name = "TopBar"
-TopBar.Size = UDim2.new(1, 0, 0, 42)
-TopBar.BackgroundColor3 = Color3.fromRGB(28, 32, 45)
-TopBar.BorderSizePixel = 0
-TopBar.Parent = MainFrame
-
-local TopBarCorner = Instance.new("UICorner")
-TopBarCorner.CornerRadius = UDim.new(0, 12)
-TopBarCorner.Parent = TopBar
-
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(1, -125, 1, 0)
-TitleLabel.Position = UDim2.new(0, 14, 0, 0)
-TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "🥚 TRỘM & ẤP TRỨNG ANIME - HUB V1.0"
-TitleLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
-TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.TextSize = 13
-TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Parent = TopBar
-
--- Minimize Button (-)
-local MinimizeBtn = Instance.new("TextButton")
-MinimizeBtn.Name = "MinimizeBtn"
-MinimizeBtn.Size = UDim2.new(0, 30, 0, 30)
-MinimizeBtn.Position = UDim2.new(1, -72, 0, 6)
-MinimizeBtn.BackgroundColor3 = Color3.fromRGB(50, 55, 75)
-MinimizeBtn.Text = "-"
-MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-MinimizeBtn.Font = Enum.Font.GothamBold
-MinimizeBtn.TextSize = 20
-MinimizeBtn.Parent = TopBar
-
-local MinimizeBtnCorner = Instance.new("UICorner")
-MinimizeBtnCorner.CornerRadius = UDim.new(0, 6)
-MinimizeBtnCorner.Parent = MinimizeBtn
-
-local MinStroke = Instance.new("UIStroke")
-MinStroke.Color = Color3.fromRGB(100, 110, 140)
-MinStroke.Thickness = 1
-MinStroke.Parent = MinimizeBtn
-
-MinimizeBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = false
-    pcall(function()
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "Đã thu nhỏ!",
-            Text = "Bấm icon quả trứng 🥚 bên trái màn hình để mở lại giao diện!",
-            Duration = 3
-        })
-    end)
-end)
-
--- Close Button (X)
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Name = "CloseBtn"
-CloseBtn.Size = UDim2.new(0, 30, 0, 30)
-CloseBtn.Position = UDim2.new(1, -36, 0, 6)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-CloseBtn.Text = "X"
-CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 14
-CloseBtn.Parent = TopBar
-
-local CloseBtnCorner = Instance.new("UICorner")
-CloseBtnCorner.CornerRadius = UDim.new(0, 6)
-CloseBtnCorner.Parent = CloseBtn
-
-CloseBtn.MouseButton1Click:Connect(function()
-    ScreenGui:Destroy()
-end)
-
--- Toggle GUI Floating Button (Mobile Support & Restore GUI)
-local MobileToggleBtn = Instance.new("TextButton")
-MobileToggleBtn.Name = "MobileToggleBtn"
-MobileToggleBtn.Size = UDim2.new(0, 50, 0, 50)
-MobileToggleBtn.Position = UDim2.new(0, 15, 0.4, 0)
-MobileToggleBtn.BackgroundColor3 = Color3.fromRGB(255, 120, 0)
-MobileToggleBtn.Text = "🥚"
-MobileToggleBtn.TextSize = 24
-MobileToggleBtn.Parent = ScreenGui
-
-local MobileCorner = Instance.new("UICorner")
-MobileCorner.CornerRadius = UDim.new(1, 0)
-MobileCorner.Parent = MobileToggleBtn
-
-local MobileStroke = Instance.new("UIStroke")
-MobileStroke.Color = Color3.fromRGB(255, 255, 255)
-MobileStroke.Thickness = 2
-MobileStroke.Parent = MobileToggleBtn
-
-MobileToggleBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = not MainFrame.Visible
-end)
-
--- Make Main UI Draggable
-local dragging, dragInput, dragStart, startPos
-TopBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = MainFrame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-TopBar.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
-
--- Sidebar Tabs Container
-local Sidebar = Instance.new("Frame")
-Sidebar.Name = "Sidebar"
-Sidebar.Size = UDim2.new(0, 140, 1, -42)
-Sidebar.Position = UDim2.new(0, 0, 0, 42)
-Sidebar.BackgroundColor3 = Color3.fromRGB(15, 17, 24)
-Sidebar.BorderSizePixel = 0
-Sidebar.Parent = MainFrame
-
-local SidebarLayout = Instance.new("UIListLayout")
-SidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
-SidebarLayout.Padding = UDim.new(0, 4)
-SidebarLayout.Parent = Sidebar
-
-local SidebarPadding = Instance.new("UIPadding")
-SidebarPadding.PaddingTop = UDim.new(0, 8)
-SidebarPadding.PaddingLeft = UDim.new(0, 6)
-SidebarPadding.PaddingRight = UDim.new(0, 6)
-SidebarPadding.Parent = Sidebar
-
--- Content Pages Container
-local ContentFrame = Instance.new("Frame")
-ContentFrame.Name = "ContentFrame"
-ContentFrame.Size = UDim2.new(1, -140, 1, -42)
-ContentFrame.Position = UDim2.new(0, 140, 0, 42)
-ContentFrame.BackgroundTransparency = 1
-ContentFrame.Parent = MainFrame
-
-local Pages = {}
-local TabButtons = {}
-
-local function createTab(name, icon)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 36)
-    btn.BackgroundColor3 = Color3.fromRGB(24, 28, 40)
-    btn.Text = icon .. " " .. name
-    btn.TextColor3 = Color3.fromRGB(180, 190, 210)
-    btn.Font = Enum.Font.GothamMedium
-    btn.TextSize = 12
-    btn.Parent = Sidebar
-
-    local btnCorner = Instance.new("UICorner")
-    btnCorner.CornerRadius = UDim.new(0, 6)
-    btnCorner.Parent = btn
-
-    local page = Instance.new("ScrollingFrame")
-    page.Size = UDim2.new(1, 0, 1, 0)
-    page.BackgroundTransparency = 1
-    page.ScrollBarThickness = 4
-    page.ScrollBarImageColor3 = Color3.fromRGB(255, 140, 0)
-    page.Visible = false
-    page.Parent = ContentFrame
-
-    local pageLayout = Instance.new("UIListLayout")
-    pageLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    pageLayout.Padding = UDim.new(0, 8)
-    pageLayout.Parent = page
-
-    local pagePadding = Instance.new("UIPadding")
-    pagePadding.PaddingTop = UDim.new(0, 10)
-    pagePadding.PaddingLeft = UDim.new(0, 10)
-    pagePadding.PaddingRight = UDim.new(0, 10)
-    pagePadding.PaddingBottom = UDim.new(0, 10)
-    pagePadding.Parent = page
-
-    Pages[name] = page
-    TabButtons[name] = btn
-
-    btn.MouseButton1Click:Connect(function()
-        for tName, pFrame in pairs(Pages) do
-            pFrame.Visible = (tName == name)
-            TabButtons[tName].BackgroundColor3 = (tName == name) and Color3.fromRGB(255, 120, 0) or Color3.fromRGB(24, 28, 40)
-            TabButtons[tName].TextColor3 = (tName == name) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(180, 190, 210)
-        end
-    end)
-
-    return page
-end
-
--- Helper: Toggle UI Component
-local function addToggle(page, text, defaultState, callback)
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, 0, 0, 40)
-    frame.BackgroundColor3 = Color3.fromRGB(26, 30, 42)
-    frame.Parent = page
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = frame
-
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -60, 1, 0)
-    label.Position = UDim2.new(0, 10, 0, 0)
-    label.BackgroundTransparency = 1
-    label.Text = text
-    label.TextColor3 = Color3.fromRGB(230, 235, 245)
-    label.Font = Enum.Font.Gotham
-    label.TextSize = 12
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = frame
-
-    local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Size = UDim2.new(0, 44, 0, 24)
-    toggleBtn.Position = UDim2.new(1, -50, 0.5, -12)
-    toggleBtn.BackgroundColor3 = defaultState and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(60, 65, 80)
-    toggleBtn.Text = defaultState and "BẬT" or "TẮT"
-    toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    toggleBtn.Font = Enum.Font.GothamBold
-    toggleBtn.TextSize = 11
-    toggleBtn.Parent = frame
-
-    local tCorner = Instance.new("UICorner")
-    tCorner.CornerRadius = UDim.new(0, 12)
-    tCorner.Parent = toggleBtn
-
-    local state = defaultState
-    toggleBtn.MouseButton1Click:Connect(function()
-        state = not state
-        toggleBtn.BackgroundColor3 = state and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(60, 65, 80)
-        toggleBtn.Text = state and "BẬT" or "TẮT"
-        callback(state)
-    end)
-end
-
--- Helper: Action Button Component
-local function addButton(page, text, callback)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 36)
-    btn.BackgroundColor3 = Color3.fromRGB(40, 45, 65)
-    btn.Text = text
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 12
-    btn.Parent = page
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = btn
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(255, 140, 0)
-    stroke.Thickness = 1
-    stroke.Parent = btn
-
-    btn.MouseButton1Click:Connect(function()
-        pcall(callback)
-    end)
-end
-
--- ── BUILD TABS (TIẾNG VIỆT) ──
-local StealPage = createTab("Trộm & Ấp", "🥚")
-local FarmPage = createTab("Cày & Tập", "⚡")
-local ESPPage = createTab("ESP & Teleport", "🔍")
-local PlayerPage = createTab("Chỉ Số Nhân Vật", "🏃")
-local SettingsPage = createTab("Cài Đặt", "⚙️")
-
--- Select first tab by default
-Pages["Trộm & Ấp"].Visible = true
-TabButtons["Trộm & Ấp"].BackgroundColor3 = Color3.fromRGB(255, 120, 0)
-TabButtons["Trộm & Ấp"].TextColor3 = Color3.fromRGB(255, 255, 255)
-
--- ── TAB 1: TRỘM & ẤP ──
-addToggle(StealPage, "Tự Động Trộm Trứng (Auto Teleport)", State.AutoSteal, function(v) State.AutoSteal = v end)
-addToggle(StealPage, "Tự Động Mang Về Base & Đặt Vào Máy Ấp", State.AutoPlaceEggs, function(v) State.AutoPlaceEggs = v end)
-addToggle(StealPage, "Mở Trứng Tức Thì (0 Giây Hold Prompt)", State.InstantHatch, function(v)
-    State.InstantHatch = v
-    applyInstantPrompts()
-end)
-addToggle(StealPage, "🛡️ Né & Vô Hiệu Hóa Trap (Bẫy Gấu, Gai, Mìn)", State.AntiTrap, function(v) State.AntiTrap = v end)
-addToggle(StealPage, "⚡ Chống Kẹp Bẫy / Khựng Tốc Độ (Anti-Stun)", State.AntiStun, function(v) State.AntiStun = v end)
-addToggle(StealPage, "🦅 Bay Lơ Lửng Trên Không (Tránh Bẫy Dưới Đất)", State.FlyAboveGround, function(v) State.FlyAboveGround = v end)
-
--- ── TAB 2: CÀY & TẬP ──
-addToggle(FarmPage, "Tự Động Luyện Tập (Máy Tập/Treadmill)", State.AutoTrain, function(v) State.AutoTrain = v end)
-addToggle(FarmPage, "Tự Động Nhấn Remote Luyện Tập", State.AutoClickTrain, function(v) State.AutoClickTrain = v end)
-addToggle(FarmPage, "Tự Động Hút Tiền Xu & Kim Cương", State.AutoCollectCoins, function(v) State.AutoCollectCoins = v end)
-addToggle(FarmPage, "Tự Động Trùng Sinh (Auto Rebirth)", State.AutoRebirth, function(v) State.AutoRebirth = v end)
-addToggle(FarmPage, "Tự Động Nâng Cấp Chỉ Số (Auto Upgrade)", State.AutoUpgradeStats, function(v) State.AutoUpgradeStats = v end)
-
--- ── TAB 3: ESP & DỊCH CHUYỂN ──
-addToggle(ESPPage, "Bật ESP Trứng (Nhìn Xuyên Tường Trứng Hiếm)", State.EggESP, function(v)
-    State.EggESP = v
-    updateESP()
-end)
-
-addButton(ESPPage, "🏠 Dịch Chuyển Về Căn Cứ (Plot / Base)", function()
-    local plot = getPlayerPlot()
-    local hrp = getRootPart()
-    if plot and hrp then
-        local spawnPad = plot:FindFirstChild("Spawn") or plot:FindFirstChildWhichIsA("BasePart")
-        if spawnPad then
-            hrp.CFrame = spawnPad.CFrame * CFrame.new(0, 4, 0)
-        end
-    end
-end)
-
-addButton(ESPPage, "⚡ Dịch Chuyển Đến Khu Luyện Tập", function()
-    local train = Workspace:FindFirstChild("Treadmills") or Workspace:FindFirstChild("Training")
-    local hrp = getRootPart()
-    if train and hrp then
-        local part = train:IsA("BasePart") and train or train:FindFirstChildWhichIsA("BasePart")
-        if part then
-            hrp.CFrame = part.CFrame * CFrame.new(0, 4, 0)
-        end
-    end
-end)
-
--- ── TAB 4: CHỈ SỐ NHÂN VẬT ──
-addToggle(PlayerPage, "Bật Tốc Độ Chạy Tùy Chỉnh", State.EnableWalkSpeed, function(v)
-    State.EnableWalkSpeed = v
-    if not v then
-        local hum = getHumanoid()
-        if hum then hum.WalkSpeed = 16 end
-    end
-end)
-
-addButton(PlayerPage, "⚡ Tốc Độ Nhanh: 150 Speed", function()
-    State.WalkSpeed = 150
-    State.EnableWalkSpeed = true
-end)
-
-addButton(PlayerPage, "🚀 Siêu Tốc Độ: 300 Speed", function()
-    State.WalkSpeed = 300
-    State.EnableWalkSpeed = true
-end)
-
-addButton(PlayerPage, "🌪️ Thần Tốc: 500 Speed", function()
-    State.WalkSpeed = 500
-    State.EnableWalkSpeed = true
-end)
-
-addToggle(PlayerPage, "Lướt CFrame Siêu Tốc (Không Giật Lag)", State.CFrameBoost, function(v) State.CFrameBoost = v end)
-
-addButton(PlayerPage, "🔹 CFrame Tốc Độ: x4 (Mượt Mà)", function()
-    State.CFrameSpeed = 4
-    State.CFrameBoost = true
-end)
-
-addButton(PlayerPage, "⚡ CFrame Siêu Tốc: x8 (Cực Nhanh)", function()
-    State.CFrameSpeed = 8
-    State.CFrameBoost = true
-end)
-
-addButton(PlayerPage, "🌪️ CFrame Thần Tốc: x15 (Tức Thời)", function()
-    State.CFrameSpeed = 15
-    State.CFrameBoost = true
-end)
-
-addToggle(PlayerPage, "Nhảy Vô Hạn (Infinite Jump)", State.InfiniteJump, function(v) State.InfiniteJump = v end)
-addToggle(PlayerPage, "Đi Xuyên Tường (Noclip)", State.Noclip, function(v) State.Noclip = v end)
-
--- ── TAB 5: CÀI ĐẶT ──
-addToggle(SettingsPage, "Chống Văng Game Anti-AFK 24/7", State.AntiAFK, function(v) State.AntiAFK = v end)
-
-addButton(SettingsPage, "🔄 Vào Lại Server Hiện Tại", function()
-    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
-end)
-
-addButton(SettingsPage, "🌐 Chuyển Server Mới (Server Hop)", function()
-    pcall(function()
-        local sfUrl = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
-        local req = game:HttpGet(sfUrl)
-        if req then
-            local data = game:GetService("HttpService"):JSONDecode(req)
-            if data and data.data then
-                for _, server in pairs(data.data) do
-                    if server.playing < server.maxPlayers and server.id ~= game.JobId then
-                        TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, LocalPlayer)
-                        break
+                local trainArea = Workspace:FindFirstChild("Treadmills") or Workspace:FindFirstChild("Training") or Workspace:FindFirstChild("Machines")
+                if trainArea then
+                    for _, machine in pairs(trainArea:GetChildren()) do
+                        local prompt = machine:FindFirstChildOfClass("ProximityPrompt", true)
+                        if prompt and prompt.Enabled then
+                            local part = machine:IsA("BasePart") and machine or machine:FindFirstChildWhichIsA("BasePart")
+                            if part then
+                                hrp.CFrame = part.CFrame * CFrame.new(0, 3, 0)
+                                task.wait(0.1)
+                                triggerPrompt(prompt)
+                                break
+                            end
+                        end
                     end
                 end
-            end
+
+                if State.AutoClickTrain then
+                    for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
+                        if remote:IsA("RemoteEvent") and (remote.Name:lower():find("train") or remote.Name:lower():find("click")) then
+                            remote:FireServer()
+                        end
+                    end
+                end
+            end)
         end
-    end)
+    end
 end)
 
+-- 6. Auto Collect Coins & Gems Worker
+task.spawn(function()
+    while true do
+        task.wait(0.3)
+        if State.AutoCollectCoins then
+            pcall(function()
+                local hrp = getRootPart()
+                if not hrp then return end
+
+                for _, obj in pairs(Workspace:GetDescendants()) do
+                    if obj:IsA("BasePart") and (obj.Name:lower():find("coin") or obj.Name:lower():find("gem") or obj.Name:lower():find("orb") or obj.Name:lower():find("drop")) then
+                        obj.CFrame = hrp.CFrame
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+-- 7. Auto Rebirth & Upgrade Worker
+task.spawn(function()
+    while true do
+        task.wait(1.0)
+        if State.AutoRebirth then
+            pcall(function()
+                for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
+                    if remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") then
+                        if remote.Name:lower():find("rebirth") then
+                            if remote:IsA("RemoteEvent") then
+                                remote:FireServer()
+                            else
+                                remote:InvokeServer()
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+        if State.AutoUpgradeStats then
+            pcall(function()
+                for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
+                    if remote:IsA("RemoteEvent") and (remote.Name:lower():find("upgrade") or remote.Name:lower():find("buy")) then
+                        remote:FireServer("Speed")
+                        remote:FireServer("Storage")
+                        remote:FireServer("Multiplier")
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+-- 8. Egg ESP Worker
+task.spawn(function()
+    while true do
+        task.wait(2.0)
+        for obj, hl in pairs(ESPHighlights) do
+            if not obj or not obj.Parent or not State.EggESP then
+                pcall(function() hl:Destroy() end)
+                ESPHighlights[obj] = nil
+            end
+        end
+        if State.EggESP then
+            pcall(function()
+                for _, obj in pairs(Workspace:GetDescendants()) do
+                    if (obj.Name:lower():find("egg") or obj:FindFirstChildOfClass("ProximityPrompt")) and not ESPHighlights[obj] then
+                        if obj:IsA("Model") or obj:IsA("BasePart") then
+                            local hl = Instance.new("Highlight")
+                            hl.Adornee = obj
+                            hl.FillColor = Color3.fromRGB(255, 170, 0)
+                            hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                            hl.FillTransparency = 0.4
+                            hl.Parent = getGuiContainer()
+                            ESPHighlights[obj] = hl
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+-- ── Load Notification ──
 pcall(function()
-    game:GetService("StarterGui"):SetCore("SendNotification", {
+    StarterGui:SetCore("SendNotification", {
         Title = "Trộm & Ấp Trứng Anime",
-        Text = "Phiên bản V1.2: Đã thêm Né Trap & Siêu Tốc Độ!",
+        Text = "Bản V2.0 Tiếng Việt Đã Sẵn Sàng!",
         Duration = 4
     })
 end)
 
-print("🥚 [STEAL & HATCH ANIME EGGS] Ultimate Auto Hub V1.2 (Né Trap & Siêu Tốc Độ) Đã Sẵn Sàng!")
+print("🥚 [STEAL & HATCH ANIME EGGS] Ultimate Auto Hub V2.0 Loaded Successfully!")
