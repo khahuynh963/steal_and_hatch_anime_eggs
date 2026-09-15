@@ -378,6 +378,7 @@ task.spawn(function()
             end)
         end
     end
+end)
 -- 10. Trap Avoidance & Anti-Trap Loop (Vô hiệu hóa bẫy gấu, gai, mìn)
 task.spawn(function()
     while task.wait(0.4) do
