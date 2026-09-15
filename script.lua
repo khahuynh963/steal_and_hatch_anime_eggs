@@ -1,7 +1,7 @@
 --[[
     ===================================================================
     🥚 STEAL & HATCH ANIME EGGS! - ULTIMATE AUTO HUB V1.0
-    Tự động chơi toàn diện cho tựa game Steal and Hatch Anime Eggs trên Roblox!
+    Tự động chơi toàn diện tiếng Việt cho tựa game Steal and Hatch Anime Eggs trên Roblox!
     
     Tính năng chính:
     1. 🥚 Auto Steal Eggs (Tự động trộm trứng từ tất cả Biome / Trùm)
@@ -13,6 +13,7 @@
     7. 🔍 Egg ESP & Biome Teleports (Hiển thị vị trí Trứng Hiếm & Dịch chuyển)
     8. 🚀 Speed Slider, CFrame Step Boost, Noclip, Infinite Jump
     9. 🛡️ Anti-AFK 24/7 Treo máy xuyên đêm
+    10. ➖ Nút Thu Nhỏ Cửa Sổ & Tắt Hẳn GUI
     ===================================================================
 --]]
 
@@ -436,18 +437,39 @@ TopBarCorner.CornerRadius = UDim.new(0, 12)
 TopBarCorner.Parent = TopBar
 
 local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(1, -90, 1, 0)
+TitleLabel.Size = UDim2.new(1, -125, 1, 0)
 TitleLabel.Position = UDim2.new(0, 14, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "🥚 STEAL & HATCH ANIME EGGS - HUB V1.0"
+TitleLabel.Text = "🥚 TRỘM & ẤP TRỨNG ANIME - HUB V1.0"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.TextSize = 14
+TitleLabel.TextSize = 13
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = TopBar
 
--- Close Button
+-- Minimize Button (—)
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Name = "MinimizeBtn"
+MinimizeBtn.Size = UDim2.new(0, 30, 0, 30)
+MinimizeBtn.Position = UDim2.new(1, -72, 0, 6)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(60, 65, 80)
+MinimizeBtn.Text = "—"
+MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeBtn.Font = Enum.Font.GothamBold
+MinimizeBtn.TextSize = 14
+MinimizeBtn.Parent = TopBar
+
+local MinimizeBtnCorner = Instance.new("UICorner")
+MinimizeBtnCorner.CornerRadius = UDim.new(0, 6)
+MinimizeBtnCorner.Parent = MinimizeBtn
+
+MinimizeBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+end)
+
+-- Close Button (✕)
 local CloseBtn = Instance.new("TextButton")
+CloseBtn.Name = "CloseBtn"
 CloseBtn.Size = UDim2.new(0, 30, 0, 30)
 CloseBtn.Position = UDim2.new(1, -36, 0, 6)
 CloseBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
@@ -465,7 +487,7 @@ CloseBtn.MouseButton1Click:Connect(function()
     ScreenGui:Destroy()
 end)
 
--- Toggle GUI Floating Button (Mobile Support)
+-- Toggle GUI Floating Button (Mobile Support & Restore GUI)
 local MobileToggleBtn = Instance.new("TextButton")
 MobileToggleBtn.Name = "MobileToggleBtn"
 MobileToggleBtn.Size = UDim2.new(0, 50, 0, 50)
@@ -613,7 +635,7 @@ local function addToggle(page, text, defaultState, callback)
     label.Text = text
     label.TextColor3 = Color3.fromRGB(230, 235, 245)
     label.Font = Enum.Font.Gotham
-    label.TextSize = 13
+    label.TextSize = 12
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = frame
 
@@ -621,7 +643,7 @@ local function addToggle(page, text, defaultState, callback)
     toggleBtn.Size = UDim2.new(0, 44, 0, 24)
     toggleBtn.Position = UDim2.new(1, -50, 0.5, -12)
     toggleBtn.BackgroundColor3 = defaultState and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(60, 65, 80)
-    toggleBtn.Text = defaultState and "ON" or "OFF"
+    toggleBtn.Text = defaultState and "BẬT" or "TẮT"
     toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     toggleBtn.Font = Enum.Font.GothamBold
     toggleBtn.TextSize = 11
@@ -635,7 +657,7 @@ local function addToggle(page, text, defaultState, callback)
     toggleBtn.MouseButton1Click:Connect(function()
         state = not state
         toggleBtn.BackgroundColor3 = state and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(60, 65, 80)
-        toggleBtn.Text = state and "ON" or "OFF"
+        toggleBtn.Text = state and "BẬT" or "TẮT"
         callback(state)
     end)
 end
@@ -648,7 +670,7 @@ local function addButton(page, text, callback)
     btn.Text = text
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 13
+    btn.TextSize = 12
     btn.Parent = page
 
     local corner = Instance.new("UICorner")
@@ -665,40 +687,40 @@ local function addButton(page, text, callback)
     end)
 end
 
--- ── BUILD TABS ──
-local StealPage = createTab("Steal & Hatch", "🥚")
-local FarmPage = createTab("Farm & Train", "⚡")
+-- ── BUILD TABS (TIẾNG VIỆT) ──
+local StealPage = createTab("Trộm & Ấp", "🥚")
+local FarmPage = createTab("Cày & Tập", "⚡")
 local ESPPage = createTab("ESP & Teleport", "🔍")
-local PlayerPage = createTab("Player Stats", "🏃")
-local SettingsPage = createTab("Settings", "⚙️")
+local PlayerPage = createTab("Chỉ Số Nhân Vật", "🏃")
+local SettingsPage = createTab("Cài Đặt", "⚙️")
 
 -- Select first tab by default
-Pages["Steal & Hatch"].Visible = true
-TabButtons["Steal & Hatch"].BackgroundColor3 = Color3.fromRGB(255, 120, 0)
-TabButtons["Steal & Hatch"].TextColor3 = Color3.fromRGB(255, 255, 255)
+Pages["Trộm & Ấp"].Visible = true
+TabButtons["Trộm & Ấp"].BackgroundColor3 = Color3.fromRGB(255, 120, 0)
+TabButtons["Trộm & Ấp"].TextColor3 = Color3.fromRGB(255, 255, 255)
 
--- ── TAB 1: STEAL & HATCH ──
-addToggle(StealPage, "Auto Steal Eggs (Auto Teleport)", State.AutoSteal, function(v) State.AutoSteal = v end)
-addToggle(StealPage, "Auto Teleport & Place at Plot", State.AutoPlaceEggs, function(v) State.AutoPlaceEggs = v end)
-addToggle(StealPage, "Instant Hatch (0s Hold Prompt)", State.InstantHatch, function(v)
+-- ── TAB 1: TRỘM & ẤP ──
+addToggle(StealPage, "Tự Động Trộm Trứng (Auto Teleport)", State.AutoSteal, function(v) State.AutoSteal = v end)
+addToggle(StealPage, "Tự Động Mang Về Base & Đặt Vào Máy Ấp", State.AutoPlaceEggs, function(v) State.AutoPlaceEggs = v end)
+addToggle(StealPage, "Mở Trứng Tức Thì (0 Giây Hold Prompt)", State.InstantHatch, function(v)
     State.InstantHatch = v
     applyInstantPrompts()
 end)
 
--- ── TAB 2: FARM & TRAIN ──
-addToggle(FarmPage, "Auto Train (Treadmill / Machine)", State.AutoTrain, function(v) State.AutoTrain = v end)
-addToggle(FarmPage, "Auto Click Train Remote", State.AutoClickTrain, function(v) State.AutoClickTrain = v end)
-addToggle(FarmPage, "Auto Magnet Coins & Gems", State.AutoCollectCoins, function(v) State.AutoCollectCoins = v end)
-addToggle(FarmPage, "Auto Rebirth Multiplier", State.AutoRebirth, function(v) State.AutoRebirth = v end)
-addToggle(FarmPage, "Auto Upgrade Stats", State.AutoUpgradeStats, function(v) State.AutoUpgradeStats = v end)
+-- ── TAB 2: CÀY & TẬP ──
+addToggle(FarmPage, "Tự Động Luyện Tập (Máy Tập/Treadmill)", State.AutoTrain, function(v) State.AutoTrain = v end)
+addToggle(FarmPage, "Tự Động Nhấn Remote Luyện Tập", State.AutoClickTrain, function(v) State.AutoClickTrain = v end)
+addToggle(FarmPage, "Tự Động Hút Tiền Xu & Kim Cương", State.AutoCollectCoins, function(v) State.AutoCollectCoins = v end)
+addToggle(FarmPage, "Tự Động Trùng Sinh (Auto Rebirth)", State.AutoRebirth, function(v) State.AutoRebirth = v end)
+addToggle(FarmPage, "Tự Động Nâng Cấp Chỉ Số (Auto Upgrade)", State.AutoUpgradeStats, function(v) State.AutoUpgradeStats = v end)
 
--- ── TAB 3: ESP & TELEPORT ──
-addToggle(ESPPage, "Enable Egg ESP (Highlight Rare Eggs)", State.EggESP, function(v)
+-- ── TAB 3: ESP & DỊCH CHUYỂN ──
+addToggle(ESPPage, "Bật ESP Trứng (Nhìn Xuyên Tường Trứng Hiếm)", State.EggESP, function(v)
     State.EggESP = v
     updateESP()
 end)
 
-addButton(ESPPage, "🏠 Teleport to My Base / Plot", function()
+addButton(ESPPage, "🏠 Dịch Chuyển Về Căn Cứ (Plot / Base)", function()
     local plot = getPlayerPlot()
     local hrp = getRootPart()
     if plot and hrp then
@@ -709,7 +731,7 @@ addButton(ESPPage, "🏠 Teleport to My Base / Plot", function()
     end
 end)
 
-addButton(ESPPage, "⚡ Teleport to Training Biome", function()
+addButton(ESPPage, "⚡ Dịch Chuyển Đến Khu Luyện Tập", function()
     local train = Workspace:FindFirstChild("Treadmills") or Workspace:FindFirstChild("Training")
     local hrp = getRootPart()
     if train and hrp then
@@ -720,8 +742,8 @@ addButton(ESPPage, "⚡ Teleport to Training Biome", function()
     end
 end)
 
--- ── TAB 4: PLAYER STATS ──
-addToggle(PlayerPage, "Enable Custom WalkSpeed", State.EnableWalkSpeed, function(v)
+-- ── TAB 4: CHỈ SỐ NHÂN VẬT ──
+addToggle(PlayerPage, "Bật Tốc Độ Chạy Tùy Chỉnh", State.EnableWalkSpeed, function(v)
     State.EnableWalkSpeed = v
     if not v then
         local hum = getHumanoid()
@@ -729,28 +751,28 @@ addToggle(PlayerPage, "Enable Custom WalkSpeed", State.EnableWalkSpeed, function
     end
 end)
 
-addButton(PlayerPage, "🚀 Speed Boost: 50 Speed", function()
+addButton(PlayerPage, "🚀 Nâng Tốc Độ: 50 Speed", function()
     State.WalkSpeed = 50
     State.EnableWalkSpeed = true
 end)
 
-addButton(PlayerPage, "⚡ Super Speed Boost: 120 Speed", function()
+addButton(PlayerPage, "⚡ Siêu Tốc Độ: 120 Speed", function()
     State.WalkSpeed = 120
     State.EnableWalkSpeed = true
 end)
 
-addToggle(PlayerPage, "CFrame Step Multiplier (Smooth Dash)", State.CFrameBoost, function(v) State.CFrameBoost = v end)
-addToggle(PlayerPage, "Infinite Jump", State.InfiniteJump, function(v) State.InfiniteJump = v end)
-addToggle(PlayerPage, "Noclip (Walk Through Walls)", State.Noclip, function(v) State.Noclip = v end)
+addToggle(PlayerPage, "Lướt CFrame Siêu Mượt (CFrame Step)", State.CFrameBoost, function(v) State.CFrameBoost = v end)
+addToggle(PlayerPage, "Nhảy Vô Hạn (Infinite Jump)", State.InfiniteJump, function(v) State.InfiniteJump = v end)
+addToggle(PlayerPage, "Đi Xuyên Tường (Noclip)", State.Noclip, function(v) State.Noclip = v end)
 
--- ── TAB 5: SETTINGS & UTILITIES ──
-addToggle(SettingsPage, "Anti-AFK 24/7 Protection", State.AntiAFK, function(v) State.AntiAFK = v end)
+-- ── TAB 5: CÀI ĐẶT ──
+addToggle(SettingsPage, "Chống Văng Game Anti-AFK 24/7", State.AntiAFK, function(v) State.AntiAFK = v end)
 
-addButton(SettingsPage, "🔄 Rejoin Current Server", function()
+addButton(SettingsPage, "🔄 Vào Lại Server Hiện Tại", function()
     TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
 end)
 
-addButton(SettingsPage, "🌐 Server Hop (Find New Server)", function()
+addButton(SettingsPage, "🌐 Chuyển Server Mới (Server Hop)", function()
     pcall(function()
         local sfUrl = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
         local req = game:HttpGet(sfUrl)
@@ -768,4 +790,4 @@ addButton(SettingsPage, "🌐 Server Hop (Find New Server)", function()
     end)
 end)
 
-print("🥚 [STEAL & HATCH ANIME EGGS] Ultimate Auto Hub V1.0 Loaded Successfully!")
+print("🥚 [STEAL & HATCH ANIME EGGS] Ultimate Auto Hub V1.0 Tiếng Việt Đã Sẵn Sàng!")
